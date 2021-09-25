@@ -1,3 +1,4 @@
+/adapters
 /CHANGELOG.md
 /CMakeLists.txt
 /COPYING
@@ -27,7 +28,6 @@
 /libhiredis.a
 /libhiredis.so
 /monitor
-/monitor.c
 /monitor1
 /monitor1.c
 /monitor20
