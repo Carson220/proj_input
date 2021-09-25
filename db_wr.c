@@ -164,7 +164,7 @@ DB_RESULT Set_Topo(uint32_t port1, uint32_t port2, uint64_t delay, int slot, cha
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t port = (((uint64_t)port1) << 32) + port2;
     /*组装redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "hset topo_%02d %lu %lu",
+    snprintf(cmd, CMD_MAX_LENGHT, "hset dfl_topo_%02d %lu %lu",
              slot, port, delay);
     // for(int i=0;cmd[i]!='\0';i++)
     //  printf("%c",cmd[i]);
@@ -228,7 +228,7 @@ DB_RESULT Set_Dfl_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot,
 {
 	char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "rpush dfl_%s%s_%02d %s",
+    snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s",
              ip_src, ip_dst, slot, out_sw_port);
     // for(int i=0;cmd[i]!='\0';i++)
     // 	printf("%c",cmd[i]);
@@ -247,8 +247,24 @@ DB_RESULT Set_Dfl_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot,
 DB_RESULT Set_Cal_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot, char *redis_ip)
 {
 	char cmd[CMD_MAX_LENGHT] = {0};
+    
     /*组装redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "rpush cal_%s%s_%02d %s",
+    snprintf(cmd, CMD_MAX_LENGHT, "del calrt_%s%s_%02d",
+             ip_src, ip_dst, slot);
+    // for(int i=0;cmd[i]!='\0';i++)
+    // 	printf("%c",cmd[i]);
+    // printf("\n");
+
+    /*执行redis命令*/
+    if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
+    {
+        printf("del calculate_route_%02d ip_src:%s, ip_dst:%s failure\n", slot, ip_src, ip_dst);
+        return FAILURE;
+    }
+    printf("del calculate_route_%02d ip_src:%s, ip_dst:%s success\n", slot, ip_src, ip_dst);
+    
+    /*组装redis命令*/
+    snprintf(cmd, CMD_MAX_LENGHT, "rpush calrt_%s%s_%02d %s",
              ip_src, ip_dst, slot, out_sw_port);
     // for(int i=0;cmd[i]!='\0';i++)
     // 	printf("%c",cmd[i]);
@@ -261,6 +277,27 @@ DB_RESULT Set_Cal_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot,
         return FAILURE;
     }
     printf("set calculate_route_%02d ip_src:%s, ip_dst:%s, out_sw:%s success\n", slot, ip_src, ip_dst, out_sw_port);
+    return SUCCESS;
+}
+
+DB_RESULT Set_Cal_Fail_Route(char *ip_src, char *ip_dst, int slot, char *redis_ip)
+{
+    char cmd[CMD_MAX_LENGHT] = {0};
+
+    /*组装redis命令*/
+    snprintf(cmd, CMD_MAX_LENGHT, "rpush failrt_%s%s_%02d 1",
+             ip_src, ip_dst, slot);
+    // for(int i=0;cmd[i]!='\0';i++)
+    // 	printf("%c",cmd[i]);
+    // printf("\n");
+
+    /*执行redis命令*/
+    if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
+    {
+        printf("set calculate_failed_route_%02d ip_src:%s, ip_dst:%s, goto table2 failure\n", slot, ip_src, ip_dst);
+        return FAILURE;
+    }
+    printf("set calculate_failed_route_%02d ip_src:%s, ip_dst:%s, goto table2 success\n", slot, ip_src, ip_dst);
     return SUCCESS;
 }
 
@@ -289,6 +326,21 @@ DB_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t sw = (((uint64_t)sw1) << 32) + sw2;
+    /*组装redis命令*/
+    snprintf(cmd, CMD_MAX_LENGHT, "del fail_link_%02d",
+             (slot-1+SLOT_NUM)%SLOT_NUM);
+    // for(int i=0;cmd[i]!='\0';i++)
+    // 	printf("%c",cmd[i]);
+    // printf("\n");
+
+    /*执行redis命令*/
+    if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
+    {
+        printf("del fail_link_%02d failure\n", (slot-1+SLOT_NUM)%SLOT_NUM);
+        return FAILURE;
+    }
+    printf("del fail_link_%02d success\n", (slot-1+SLOT_NUM)%SLOT_NUM);
+
     /*组装redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "rpush fail_link_%02d %lu",
              slot, sw);
@@ -486,7 +538,7 @@ DB_RESULT Get_Topo(int slot, char *redis_ip, tp_sw sw_list[SW_NUM])
     int i, j;
 
     /*组装Redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "hgetall topo_%02d", slot);
+    snprintf(cmd, CMD_MAX_LENGHT, "hgetall dfl_topo_%02d", slot);
     // for(int i=0;cmd[i]!='\0';i++)
     // 	printf("%c",cmd[i]);
     // printf("\n");
@@ -609,7 +661,7 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char *redis_ip
 
     uint64_t port = (((uint64_t)port1) << 32) + port2;
     /*组装redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "hget topo_%02d %lu",
+    snprintf(cmd, CMD_MAX_LENGHT, "hget dfl_topo_%02d %lu",
              slot, port);
     // for(int i=0;cmd[i]!='\0';i++)
     // 	printf("%c",cmd[i]);

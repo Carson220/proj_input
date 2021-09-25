@@ -3,6 +3,7 @@
 
 #define SW_NUM 66
 #define SLOT_TIME 40
+#define SLOT_NUM 44
 
 #ifndef RETURN_RESULT
 #define RETURN_RESULT

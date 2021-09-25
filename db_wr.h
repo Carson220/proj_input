@@ -62,10 +62,12 @@ DB_RESULT Del_Real_Topo(uint32_t port1, uint32_t port2, int slot, char *redis_ip
 // write default routes(s2s/d2d/c2s/c2d)
 DB_RESULT Set_Dfl_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot, char *redis_ip);
 DB_RESULT Set_Cal_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot, char *redis_ip);
+DB_RESULT Set_Cal_Fail_Route(char *ip_src, char *ip_dst, int slot, char *redis_ip);
 // write links that next slot will be deleted
 DB_RESULT Set_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip);
 // write links that have been disconnected
-DB_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip);
+DB_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip); 
+//注意：何时清空失效链路列表？下一个时间片
 
 /*读函数*/
 // uint16_t Get_Ctrl_Id(uint32_t ip);                       /*获取控制器ID*/
