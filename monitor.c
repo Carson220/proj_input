@@ -28,7 +28,8 @@
 #define DB_ID 2 // database_id = 192.168.68.2
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 2345
-#define BUFSIZE 100
+#define UDP_PORT 12000
+#define BUFSIZE 512
 #define ROUTE_ADD 1 // type_1 add
 #define ROUTE_DEL 2 // type_2 del
 #define CAL_FAIL 0
@@ -39,10 +40,38 @@
 int fd[MAX_NUM] = {0, }; // 记录不同控制器节点对应的套接字描述符
 int slot = 0; // slot_id
 int fail_link_index = 0; // 记录已经处理到的fail_link列表的索引
+int server_fd = -1; // UDP监听的套接字
 
 void print_err(char *str, int line, int err_no) {
 	printf("%d, %s :%s\n",line,str,strerror(err_no));
 	// _exit(-1);
+}
+
+int listen_init(void)
+{
+    // 初始化监听套接字
+    int ret;
+    struct sockaddr_in ser_addr;
+
+    server_fd = socket(AF_INET, SOCK_DGRAM, 0); //AF_INET:IPV4;SOCK_DGRAM:UDP
+    if(server_fd < 0)
+    {
+        printf("create socket fail!\n");
+        return -1;
+    }
+
+    memset(&ser_addr, 0, sizeof(ser_addr));
+    ser_addr.sin_family = AF_INET;
+    ser_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); //IP地址，需要进行网络序转换，INADDR_ANY：本地地址
+    ser_addr.sin_port = htons(UDP_PORT);  //端口号，需要网络序转换
+
+    ret = bind(server_fd, (struct sockaddr*)&ser_addr, sizeof(ser_addr));
+    if(ret < 0)
+    {
+        printf("socket bind fail!\n");
+        return -1;
+    }
+    return 0;
 }
 
 // 子线程中发送一个消息给客户端
@@ -72,7 +101,7 @@ void print_err(char *str, int line, int err_no) {
 // }
 
 // 子线程中等待客户端连接
-void *waitconnect(void *pth_arg)
+void *tcpconnect(void *pth_arg)
 {
 	long skfd = (long)pth_arg;
 
@@ -97,6 +126,26 @@ void *waitconnect(void *pth_arg)
 	}
 }
 
+void *udpconnect(void *pth_arg)
+{
+    uint8_t buf[BUFSIZE] = {'\0'};
+    struct sockaddr_in *clent_addr;
+    socklen_t len = sizeof(struct sockaddr_in);
+    
+    if(listen_init() != 0)
+    {
+        printf("套接字初始化失败\n"); 
+        return -1;
+    }
+    while(1)
+    {
+        bzero(&buf, sizeof(buf));
+        recvfrom(server_fd, buf, BUFSIZE, 0, (struct sockaddr*)clent_addr, &len);
+        slot = atoi(buf);
+        fail_link_index = 0;
+    }
+}
+
 // 向相应的控制器发送新增路由表项
 int route_add(char *obj, int flag)
 {
@@ -111,6 +160,10 @@ int route_add(char *obj, int flag)
     long cfd = -1;
     int ret = -1;
     char buf[BUFSIZE] = {0};
+
+    char slot_str[2] = {0,};
+    strncpy(slot_str, obj+14, 2);
+    int slot = atoi(slot_str);
 
     char ip_src[IP_LEN] = {0,};
     char ip_dst[IP_LEN] = {0,};
@@ -166,6 +219,7 @@ int route_add(char *obj, int flag)
             if(flag != 0) Add_Rt_Set((uint32_t)sw, (uint32_t)port, ip_src, ip_dst, slot, REDIS_SERVER_IP);
 
             // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,timeout:3
+            bzero(&buf, sizeof(buf));
             snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, ((flag==0)?GOTO_TABLE:port), timeout);
             ret = send(cfd, buf, sizeof(buf), 0);
             if (ret == -1)
@@ -208,6 +262,9 @@ int route_del(char *obj, int index)
     int ret = -1;
     char buf[BUFSIZE] = {0,};
     char ip_src[IP_LEN/4] = {0,}; // ip_src最后两位
+    char slot_str[2] = {0,};
+    strncpy(slot_str, obj+10, 2);
+    int slot = atoi(slot_str);
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "lindex %s %d", obj, index);
@@ -285,6 +342,7 @@ int route_del(char *obj, int index)
             cfd = fd[ctrl_id];
 
             // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,timeout:3
+            bzero(&buf, sizeof(buf));
             snprintf(buf, BUFSIZE, "%d%03d%s%03d%03d", ROUTE_DEL, sw, reply->element[i]->str, 0, 0);
             ret = send(cfd, buf, sizeof(buf), 0);
             if (ret == -1)
@@ -409,11 +467,18 @@ int main(int argc, char **argv)
 	
 	pthread_t id;
 	//创建子线程，使用accept阻塞监听客户端的连接
-    ret = pthread_create(&id, NULL, waitconnect, (void*)skfd);
+    ret = pthread_create(&id, NULL, tcpconnect, (void*)skfd);
     if (ret == -1) 
     {
-        print_err("create failed", __LINE__, errno); 
+        print_err("create tcpconnect failed", __LINE__, errno); 
     }
+
+    ret = pthread_create(&id, NULL, udpconnect, NULL);
+    if (ret == -1) 
+    {
+        print_err("create udpconnect failed", __LINE__, errno); 
+    }
+
 
     signal(SIGPIPE, SIG_IGN);
     struct event_base *base = event_base_new(); // 创建libevent对象 alloc并返回一个带默认配置的event base
