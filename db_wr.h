@@ -86,6 +86,8 @@ uint32_t Get_Ctrl_Conn_Db(uint32_t ctrl, int slot, char *redis_ip);
 DB_RESULT Get_Topo(int slot, char *redis_ip, tp_sw sw_list[SW_NUM]);
 //read real topo from redis to sw_list
 DB_RESULT Get_Real_Topo(int slot, char *redis_ip, tp_sw sw_list[SW_NUM]);
+// lookup whether link will be deleted in next slot
+DB_RESULT Lookup_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip);
 // read link delay
 uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char *redis_ip);
 

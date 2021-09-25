@@ -652,6 +652,55 @@ DB_RESULT Get_Real_Topo(int slot, char *redis_ip, tp_sw sw_list[SW_NUM])
     return SUCCESS;
 }
 
+DB_RESULT Lookup_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
+{
+    char cmd[CMD_MAX_LENGHT] = {0};
+    uint64_t sw = (((uint64_t)sw1) << 32) + sw2;
+    redisContext *context;
+    redisReply *reply;
+    int i = 0;
+
+    /*组装redis命令*/
+    snprintf(cmd, CMD_MAX_LENGHT, "lrange del_link_%02d 0 -1",
+             slot);
+    // for(int i=0;cmd[i]!='\0';i++)
+    // 	printf("%c",cmd[i]);
+    // printf("\n");
+
+    /*连接redis*/
+    redis_connect(&context, redis_ip);
+
+    /*执行redis命令*/
+    reply = (redisReply *)redisCommand(context, cmd);
+    if (NULL == reply)
+    {
+        printf("%d execute command:%s failure\n", __LINE__, cmd);
+        redisFree(context);
+        return FAILURE;
+    }
+
+    //输出查询结果
+    if(reply->str == NULL)
+    {
+        printf("return NULL\n");
+        return FAILURE;
+    }
+    for(i = 0; i < reply->elements; i++)
+    {
+        if(sw == atol(reply->element[i]->str))
+        {
+            printf("link %s exists in del_link", reply->element[i]->str);
+            freeReplyObject(reply);
+            redisFree(context);
+            return SUCCESS;
+        }
+    }
+    printf("link %s don't exists in del_link", reply->element[i]->str);
+    freeReplyObject(reply);
+    redisFree(context);
+    return FAILURE;
+}
+
 uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
