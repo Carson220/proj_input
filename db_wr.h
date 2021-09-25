@@ -2,23 +2,30 @@
 *   文件名称：db_wr.h
 *   描    述：用于向Redis数据库进行读写操作
 
-1. controller读取当前时间片的topo
-    接口input：uint32_t slot_no, tp_sw sw_list[SW_NUM]
-    其中，sw_list为tp_sw类型，对每一条边调用函数(在mulhello的topo.c中)
-    int tp_add_link(uint32_t sw_dpid, uint32_t port1, uint32_t sw_dpid_adj, uint32_t port2, uint64_t delay, tp_sw sw_list[SW_NUM])
+1、设置交换机的默认主控制器 "hset active_ctrl_%02d %u %u", slot, sw, ctrl
+2、设置交换机的默认备用控制器 "hset standby_ctrl_%02d %u %u", slot, sw, ctrl
+3、设置控制器的默认数据库 "hset db_%02d %u %u", slot, ctrl, db
 
-2. 维护controller当前连接的sw集合，db代理分发路由时需要查询结果，发送给相应的控制器
-    接口input：int ctrl_id, uint32_t sw_dpid
-    可采用set数据结构存储，https://blog.csdn.net/Xiejingfa/article/details/50594005
+// 维护controller当前连接的sw集合，db代理分发路由时需要查询结果，发送给相应的控制器
+// 可采用set数据结构存储，https://blog.csdn.net/Xiejingfa/article/details/50594005
+4、交换机连接控制器后，将该交换机添加到对应控制器的控制集合中 "sadd sw_set_%02d_%02d %u", ctrl, slot, sw
+5、交换机断开连接后，将该交换机从对应控制器的控制集合中删除 "srem sw_set_%02d_%02d %u", ctrl, slot, sw
 
-3. 控制器确认链路连接之后，写入数据库的当前时间片真实拓扑real_topo
-    接口input：uint32_t sw_dpid, uint32_t port1, uint32_t sw_dpid_adj, uint32_t port2
+6、设置默认拓扑 "hset dfl_topo_%02d %lu %lu", slot, port, delay
 
-4. 控制器发现链路断开之后，需要从real_topo中删除，并加入到失效链路集合fail_link中
-    接口input：uint32_t sw_dpid, uint32_t port1, uint32_t sw_dpid_adj, uint32_t port2
+7、控制器确认链路连接之后，将该链路添加到真实拓扑中  "hset real_topo_%02d %lu %lu", slot, port, delay
+8、控制器确认链路断开连接之后，将该链路从真实拓扑中删除  "hdel real_topo_%02d %lu %lu", slot, port, delay
+9、控制器确认链路断开连接之后，将该链路添加到失效链路列表中 "rpush fail_link_%02d %lu", slot, sw
+注意：何时清空失效链路列表？下一个时间片
 
-5. 控制器将计算好的路由写入数据库（一次完成整个条目的写入）
-    接口input：uint32_t nw_src, uint32_t nw_dst, uint32_t sw_dpid, uint32_t outport
+10、控制器下发新增流表后，把路由条目加入该链路的路由集合中 "sadd rt_set_%02d_%02d_%02d %s%s", sw1, sw2, slot, ip_src, ip_dst
+11、控制器下发删除流表后，从该链路的路由集合中删去相应路由条目 "del rt_set_%02d_%02d_%02d", sw1, sw2, slot
+
+12、设置默认路由列表 "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot, out_sw_port
+13、设置控制器计算出的路由列表(控制器将计算好的路由写入数据库,一次完成整个条目的写入) "rpush calrt_%s%s_%02d %s", ip_src, ip_dst, slot, out_sw_port 
+14、设置控制器未成功计算出的路由列表，goto table2走默认路由 "rpush failrt_%s%s_%02d 1", ip_src, ip_dst, slot
+
+15、设置下个时间片要删除的链路列表 "rpush del_link_%02d %lu", slot, sw
     
 ***************************************************************/
 
@@ -66,8 +73,12 @@ DB_RESULT Set_Cal_Fail_Route(char *ip_src, char *ip_dst, int slot, char *redis_i
 // write links that next slot will be deleted
 DB_RESULT Set_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip);
 // write links that have been disconnected
-DB_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip); 
 //注意：何时清空失效链路列表？下一个时间片
+DB_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip); 
+// write link <-> routes set
+DB_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, int slot, char *redis_ip);
+DB_RESULT Del_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip);
+
 
 /*读函数*/
 // uint16_t Get_Ctrl_Id(uint32_t ip);                       /*获取控制器ID*/

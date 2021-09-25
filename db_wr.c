@@ -358,6 +358,46 @@ DB_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
     return SUCCESS;
 }
 
+DB_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, int slot, char *redis_ip)
+{
+    char cmd[CMD_MAX_LENGHT] = {0};
+    /*组装redis命令*/
+    snprintf(cmd, CMD_MAX_LENGHT, "sadd rt_set_%02d_%02d_%02d %s%s",
+             sw1, sw2, slot, ip_src, ip_dst);
+    // for(int i=0;cmd[i]!='\0';i++)
+    //  printf("%c",cmd[i]);
+    // printf("\n");
+
+    /*执行redis命令*/
+    if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
+    {
+        printf("add rt_set_sw%02d_sw%02d_%02d rt:%s<->%s failure\n", sw1, sw2, slot, ip_src, ip_dst);
+        return FAILURE;
+    }
+    printf("add rt_set_sw%02d_sw%02d_%02d rt:%s<->%s success\n", sw1, sw2, slot, ip_src, ip_dst);
+    return SUCCESS;
+}
+
+DB_RESULT Del_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
+{
+    char cmd[CMD_MAX_LENGHT] = {0};
+    /*组装redis命令*/
+    snprintf(cmd, CMD_MAX_LENGHT, "del rt_set_%02d_%02d_%02d",
+             sw1, sw2, slot);
+    // for(int i=0;cmd[i]!='\0';i++)
+    //  printf("%c",cmd[i]);
+    // printf("\n");
+
+    /*执行redis命令*/
+    if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
+    {
+        printf("del rt_set_sw%02d_sw%02d_%02d failure\n", sw1, sw2, slot);
+        return FAILURE;
+    }
+    printf("del rt_set_sw%02d_sw%02d_%02d success\n", sw1, sw2, slot;
+    return SUCCESS;
+}
+
 /****************************************************************************************************/
 
 uint32_t Get_Active_Ctrl(uint32_t sw, int slot, char *redis_ip)
