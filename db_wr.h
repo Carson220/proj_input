@@ -18,14 +18,18 @@
 9、控制器确认链路断开连接之后，将该链路添加到失效链路列表中 "rpush fail_link_%02d %lu", slot, sw
 注意：何时清空失效链路列表？下一个时间片
 
-10、控制器下发新增流表后，把路由条目加入该链路的路由集合中 "sadd rt_set_%02d_%02d_%02d %s%s", sw1, sw2, slot, ip_src, ip_dst
-11、控制器下发删除流表后，从该链路的路由集合中删去相应路由条目 "del rt_set_%02d_%02d_%02d", sw1, sw2, slot
+10、控制器下发新增（非定时）流表后，把路由条目加入该链路的（非定时）路由集合中 "sadd rt_set_%02d_%02d %s%s", sw1, sw2, ip_src, ip_dst
+11、控制器下发新增（定时）流表后，把路由条目加入该链路的（定时）路由集合中 "sadd rt_set_t_%02d_%02d_%02d %s%s", sw1, sw2, slot, ip_src, ip_dst
+12、链路失效，控制器下发删除该链路的全部流表后，从链路的（定时+非定时）路由集合中删去相应路由条目 
+"srem rt_set_%02d_%02d %s%s", sw1, sw2, ip_src, ip_dst	"srem rt_set_t_%02d_%02d_%02d %s%s", sw1, sw2, slot, ip_src, ip_dst
+13、控制器下发设置流表定时后，把路由条目该链路的从（非定时）路由集合中取出，加入（定时）路由集合中
+"smove rt_set_%02d_%02d rt_set_t_%02d_%02d_%02d %s%s", sw1, sw2, sw1, sw2, slot, ip_src, ip_dst
 
-12、设置默认路由列表 "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot, out_sw_port
-13、设置控制器计算出的路由列表(控制器将计算好的路由写入数据库,一次完成整个条目的写入) "rpush calrt_%s%s_%02d %s", ip_src, ip_dst, slot, out_sw_port 
-14、设置控制器未成功计算出的路由列表，goto table2走默认路由 "rpush failrt_%s%s_%02d 1", ip_src, ip_dst, slot
+14、设置默认路由列表 "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot, out_sw_port
+15、设置控制器计算出的路由列表 "rpush calrt_%s%s %s", ip_src, ip_dst, out_sw_port
+16、设置控制器未成功计算出的路由列表，goto table2走默认路由 "rpush failrt_%s%s 1", ip_src, ip_dst
 
-15、设置下个时间片要删除的链路列表 "rpush del_link_%02d %lu", slot, sw
+17、设置下个时间片要删除的链路集合 "sadd del_link_%02d %lu", slot, sw
     
 ***************************************************************/
 
@@ -68,16 +72,18 @@ DB_RESULT Add_Real_Topo(uint32_t port1, uint32_t port2, int slot, char *redis_ip
 DB_RESULT Del_Real_Topo(uint32_t port1, uint32_t port2, int slot, char *redis_ip);
 // write default routes(s2s/d2d/c2s/c2d)
 DB_RESULT Set_Dfl_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot, char *redis_ip);
-DB_RESULT Set_Cal_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot, char *redis_ip);
-DB_RESULT Set_Cal_Fail_Route(char *ip_src, char *ip_dst, int slot, char *redis_ip);
+DB_RESULT Set_Cal_Route(char *ip_src, char *ip_dst, char *out_sw_port, char *redis_ip);
+DB_RESULT Set_Cal_Fail_Route(char *ip_src, char *ip_dst, char *redis_ip);
 // write links that next slot will be deleted
 DB_RESULT Set_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip);
 // write links that have been disconnected
 //注意：何时清空失效链路列表？下一个时间片
 DB_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip); 
 // write link <-> routes set
-DB_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, int slot, char *redis_ip);
-DB_RESULT Del_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip);
+DB_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, char *redis_ip);
+DB_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, char *redis_ip);
+DB_RESULT Add_Rt_Set_Time(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char *redis_ip);
+DB_RESULT Mov_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char *redis_ip);
 
 
 /*读函数*/
