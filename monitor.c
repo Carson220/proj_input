@@ -160,7 +160,8 @@ void *udpconnect(void *pth_arg)
 void *work_thread(void *pth_arg)
 {
     // 校对topo将失效链路加入fail_link
-    
+    Diff_Topo(slot, REDIS_SERVER_IP);
+
 /****************************************************************************/
     // 根据del_link遍历路由条目调整定时
     char cmd[CMD_MAX_LENGHT] = {0};
@@ -176,7 +177,6 @@ void *work_thread(void *pth_arg)
     char buf[BUFSIZE] = {0,};
     char ip_src[IP_LEN] = {0,};
     char ip_dst[IP_LEN] = {0,};
-    // char ip_src_two[IP_LEN/4] = {0,}; // ip_src最后两位
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "smembers del_link_%02d", slot);

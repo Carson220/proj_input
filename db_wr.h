@@ -11,10 +11,9 @@
 4、交换机连接控制器后，将该交换机添加到对应控制器的控制集合中 "sadd sw_set_%02d_%02d %u", ctrl, slot, sw
 5、交换机断开连接后，将该交换机从对应控制器的控制集合中删除 "srem sw_set_%02d_%02d %u", ctrl, slot, sw
 
-6、设置默认拓扑 "hset dfl_topo_%02d %lu %lu", slot, port, delay
-
-7、控制器确认链路连接之后，将该链路添加到真实拓扑中  "hset real_topo_%02d %lu %lu", slot, port, delay
-8、控制器确认链路断开连接之后，将该链路从真实拓扑中删除  "hdel real_topo_%02d %lu %lu", slot, port, delay
+6、设置默认拓扑 "hset dfl_topo_%02d %lu %lu", slot, sw, delay	"sadd dfl_set_%02d %lu", slot, sw
+7、控制器确认链路连接之后，将该链路添加到真实拓扑中  "hset real_topo_%02d %lu %lu", slot, sw, delay	"sadd real_set_%02d %lu", slot, sw
+8、控制器确认链路断开连接之后，将该链路从真实拓扑中删除  "hdel real_topo_%02d %lu", slot, sw	"srem real_set_%02d %lu", slot, sw
 9、控制器确认链路断开连接之后，将该链路添加到失效链路列表中 "rpush fail_link_%02d %lu", slot, sw
 注意：何时清空失效链路列表？下一个时间片
 
@@ -30,6 +29,8 @@
 16、设置控制器未成功计算出的路由列表，goto table2走默认路由 "rpush failrt_%s%s 1", ip_src, ip_dst
 
 17、设置下个时间片要删除的链路集合 "sadd del_link_%02d %lu", slot, sw
+18、拓扑收敛之后，校对得到失效链路，添加到失效链路列表中 
+"sdiff dfl_set_%02d real_set_%02d", slot, slot	"rpush fail_link_%02d %lu", slot, sw
     
 ***************************************************************/
 
@@ -66,10 +67,10 @@ DB_RESULT Del_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char *redis_ip);
 // write controller <-> database
 DB_RESULT Set_Ctrl_Conn_Db(uint32_t ctrl, uint32_t db, int slot, char *redis_ip);
 // write default topo
-DB_RESULT Set_Topo(uint32_t port1, uint32_t port2, uint64_t delay, int slot, char *redis_ip);
+DB_RESULT Set_Topo(uint32_t sw1, uint32_t sw2, uint64_t delay, int slot, char *redis_ip);
 // write real topo that links must be connected
-DB_RESULT Add_Real_Topo(uint32_t port1, uint32_t port2, int slot, char *redis_ip);
-DB_RESULT Del_Real_Topo(uint32_t port1, uint32_t port2, int slot, char *redis_ip);
+DB_RESULT Add_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip);
+DB_RESULT Del_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip);
 // write default routes(s2s/d2d/c2s/c2d)
 DB_RESULT Set_Dfl_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot, char *redis_ip);
 DB_RESULT Set_Cal_Route(char *ip_src, char *ip_dst, char *out_sw_port, char *redis_ip);
@@ -84,6 +85,8 @@ DB_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, cha
 DB_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, char *redis_ip);
 DB_RESULT Add_Rt_Set_Time(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char *redis_ip);
 DB_RESULT Mov_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char *redis_ip);
+// write fail_link(dfl_set - real_set)
+DB_RESULT Diff_Topo(int slot, char *redis_ip);
 
 
 /*读函数*/
