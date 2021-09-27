@@ -26,9 +26,9 @@
 #define REDIS_SERVER_IP "192.168.10.118"
 #define REDIS_SERVER_PORT 6379
 #define DB_ID 2 // database_id = 192.168.68.2
-#define SERVER_IP "127.0.0.1"
-#define SERVER_PORT 2345
-#define UDP_PORT 12000
+#define SERVER_IP "127.0.0.1" // tcp+udp ip
+#define SERVER_PORT 2345 // tcp port
+#define UDP_PORT 12000 // udp port
 #define BUFSIZE 512
 #define ROUTE_ADD 1 // type_1 add
 #define ROUTE_DEL 2 // type_2 del
@@ -62,7 +62,7 @@ int listen_init(void)
 
     memset(&ser_addr, 0, sizeof(ser_addr));
     ser_addr.sin_family = AF_INET;
-    ser_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); //IP地址，需要进行网络序转换，INADDR_ANY：本地地址
+    ser_addr.sin_addr.s_addr = inet_addr(SERVER_IP); //IP地址，需要进行网络序转换，INADDR_ANY：本地地址
     ser_addr.sin_port = htons(UDP_PORT);  //端口号，需要网络序转换
 
     ret = bind(server_fd, (struct sockaddr*)&ser_addr, sizeof(ser_addr));

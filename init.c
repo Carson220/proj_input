@@ -11,6 +11,7 @@
 #define fname_len 50
 #define addr_len 8
 #define redis_ip_len 14
+#define DB_ID 1 // database_id = 192.168.68.2
 
 int main(int argc,char *argv[])
 {
@@ -27,7 +28,7 @@ int main(int argc,char *argv[])
     char ip_src[addr_len]  = {0,};
     char ip_dst[addr_len]  = {0,};
     char redis_ip[redis_ip_len] = {0,};
-    int nodeid; // 数据库所在节点序号
+    int nodeid = DB_ID; // 数据库所在节点序号
 
     // read local ip
     snprintf(redis_ip, redis_ip_len, "192.168.68.%d", nodeid+1);
