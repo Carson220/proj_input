@@ -20,11 +20,14 @@
 #include <errno.h>
 #include <pthread.h>
 #include "db_wr.h"
+#include "db_wr.c"
 
 #define MAX_NUM 66
 #define CMD_MAX_LENGHT 256
 #define REDIS_SERVER_IP "192.168.10.118"
-#define REDIS_SERVER_PORT 6379
+
+#define REDIS_SERVER_PORT 8102
+
 #define DB_ID 2 // database_id = 192.168.68.2
 #define SERVER_IP "127.0.0.1" // tcp+udp ip
 #define SERVER_PORT 2345 // tcp port
@@ -126,37 +129,6 @@ void *tcpconnect(void *pth_arg)
 	}
 }
 
-void *udpconnect(void *pth_arg)
-{
-    uint8_t buf[BUFSIZE] = {'\0'};
-    struct sockaddr_in *clent_addr;
-    socklen_t len = sizeof(struct sockaddr_in);
-    pthread_t pid;
-    long ret = -1;
-    
-    if(listen_init() != 0)
-    {
-        printf("套接字初始化失败\n"); 
-        return;
-    }
-    while(1)
-    {
-        bzero(&buf, sizeof(buf));
-        recvfrom(server_fd, buf, BUFSIZE, 0, (struct sockaddr*)clent_addr, &len);
-        slot = atoi(buf);
-        fail_link_index = 0;
-
-        // wait converge
-        sleep(SLOT_TIME/4);
-        //创建子线程，校对topo将失效链路加入fail_link，并根据del_link遍历路由条目调整定时
-        ret = pthread_create(&pid, NULL, work_thread, NULL);
-        if (ret == -1) 
-        {
-            print_err("create work_thread failed", __LINE__, errno); 
-        }
-    }
-}
-
 void *work_thread(void *pth_arg)
 {
     // 校对topo将失效链路加入fail_link
@@ -187,7 +159,7 @@ void *work_thread(void *pth_arg)
     {
         redisFree(context1);
         printf("Error: %s\n", context1->errstr);
-        return;
+        return NULL;
     }
     printf("connect redis server success\n");
 
@@ -197,12 +169,12 @@ void *work_thread(void *pth_arg)
     {
         printf("execute command:%s failure\n", cmd);
         redisFree(context1);
-        return;
+        return NULL;
     }
 
     // 输出查询结果
     printf("\tentry num = %lu\n",reply1->elements);
-    if(reply1->elements == 0) return;
+    if(reply1->elements == 0) return NULL;
     for(i = 0; i < reply1->elements; i++)
     {
         sw = atol(reply1->str);
@@ -254,7 +226,7 @@ void *work_thread(void *pth_arg)
                 cfd = fd[ctrl_id];
                 // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,timeout:3
                 bzero(&buf, sizeof(buf));
-                snprintf(buf, BUFSIZE, "%d%03d%s%03d%03d", ROUTE_ADD, sw, reply2->element[i]->str, 0, (SLOT_TIME - SLOT_TIME/4));
+                snprintf(buf, BUFSIZE, "%d%03ld%s%03d%03d", ROUTE_ADD, sw, reply2->element[i]->str, 0, (SLOT_TIME - SLOT_TIME/4));
                 ret = send(cfd, buf, sizeof(buf), 0);
                 if (ret == -1)
                 {
@@ -273,7 +245,38 @@ void *work_thread(void *pth_arg)
 
     freeReplyObject(reply1);
     redisFree(context1);
-    return;
+    return NULL;
+}
+
+void *udpconnect(void *pth_arg)
+{
+    uint8_t buf[BUFSIZE] = {'\0'};
+    struct sockaddr_in *clent_addr;
+    socklen_t len = sizeof(struct sockaddr_in);
+    pthread_t pid;
+    long ret = -1;
+    
+    if(listen_init() != 0)
+    {
+        printf("套接字初始化失败\n"); 
+        return NULL;
+    }
+    while(1)
+    {
+        bzero(&buf, sizeof(buf));
+        recvfrom(server_fd, buf, BUFSIZE, 0, (struct sockaddr*)clent_addr, &len);
+        slot = atoi(buf);
+        fail_link_index = 0;
+
+        // wait converge
+        sleep(SLOT_TIME/4);
+        //创建子线程，校对topo将失效链路加入fail_link，并根据del_link遍历路由条目调整定时
+        ret = pthread_create(&pid, NULL, work_thread, NULL);
+        if (ret == -1) 
+        {
+            print_err("create work_thread failed", __LINE__, errno); 
+        }
+    }
 }
 
 // 向相应的控制器发送新增路由表项
@@ -491,7 +494,7 @@ int route_del(char *obj, int index)
 
             // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,timeout:3
             bzero(&buf, sizeof(buf));
-            snprintf(buf, BUFSIZE, "%d%03d%s%03d%03d", ROUTE_DEL, sw, reply->element[i]->str, 0, 0);
+            snprintf(buf, BUFSIZE, "%d%03ld%s%03d%03d", ROUTE_DEL, sw, reply->element[i]->str, 0, 0);
             ret = send(cfd, buf, sizeof(buf), 0);
             if (ret == -1)
             {

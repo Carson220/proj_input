@@ -31,12 +31,13 @@ int main(int argc,char *argv[])
     int nodeid = DB_ID; // 数据库所在节点序号
 
     // read local ip
-    snprintf(redis_ip, redis_ip_len, "192.168.68.%d", nodeid+1);
+    // snprintf(redis_ip, redis_ip_len, "192.168.68.%d", nodeid+1);
+    snprintf(redis_ip, redis_ip_len, "192.168.10.118");
 
     // write topo: uint32_t sw1, uint32_t sw2, uint64_t delay
     for(i = 0; i < slot_num; i++)
     {
-        snprintf(fname, fname_len, "test_%d", i);
+        snprintf(fname, fname_len, "..\\proj_topo\\test_%d", i);
         if((fp=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
@@ -61,7 +62,7 @@ int main(int argc,char *argv[])
     // write switch <-> controller(active and standby): uint32_t sw, uint32_t ctrl
     for(i = 0; i < slot_num; i++)
     {
-        snprintf(fname, fname_len, "active_ctrl_%d", i);
+        snprintf(fname, fname_len, "..\\proj_topo\\active_ctrl_%d", i);
         if((fp1=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
@@ -69,7 +70,7 @@ int main(int argc,char *argv[])
         }
         fscanf(fp1, "%d\n", &num);
         
-        snprintf(fname, fname_len, "standby_ctrl_%d", i);
+        snprintf(fname, fname_len, "..\\proj_topo\\standby_ctrl_%d", i);
         if((fp2=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
@@ -93,7 +94,7 @@ int main(int argc,char *argv[])
     // write controller <-> database: uint32_t ctrl, uint32_t db
     for(i = 0; i < slot_num; i++)
     {
-        snprintf(fname, fname_len, "db_%d", i);
+        snprintf(fname, fname_len, "..\\proj_topo\\db_%d", i);
         if((fp=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
@@ -118,7 +119,7 @@ int main(int argc,char *argv[])
     for(i = 0; i < slot_num; i++)
     {
         // s2s default routes
-        snprintf(fname, fname_len, "s2s_%d", i);
+        snprintf(fname, fname_len, "..\\proj_topo\\s2s_%d", i);
         if((fp=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
@@ -143,7 +144,7 @@ int main(int argc,char *argv[])
         fclose(fp);
 
         // d2d default routes
-        snprintf(fname, fname_len, "d2d_%d", i);
+        snprintf(fname, fname_len, "..\\proj_topo\\d2d_%d", i);
         if((fp=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
@@ -168,7 +169,7 @@ int main(int argc,char *argv[])
         fclose(fp);
 
         // c2s default routes
-        snprintf(fname, fname_len, "c2s_%d", i);
+        snprintf(fname, fname_len, "..\\proj_topo\\c2s_%d", i);
         if((fp=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
@@ -194,7 +195,7 @@ int main(int argc,char *argv[])
         fclose(fp);
 
         // c2d default routes
-        snprintf(fname, fname_len, "c2d_%d", i);
+        snprintf(fname, fname_len, "..\\proj_topo\\c2d_%d", i);
         if((fp=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
@@ -223,7 +224,7 @@ int main(int argc,char *argv[])
     // write links that next slot will be deleted: uint32_t sw1, uint32_t sw2
     for(i = 0; i < slot_num; i++)
     {
-        snprintf(fname, fname_len, "del_link_%d", i);
+        snprintf(fname, fname_len, "..\\proj_topo\\del_link_%d", i);
         if((fp=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
@@ -237,12 +238,5 @@ int main(int argc,char *argv[])
         }
         fclose(fp);
     }
-
-    // write routes that next slot will be deleted
-    for(i = 0; i < slot_num; i++)
-    {
-        // list store
-    }
-
     return 0;
 }

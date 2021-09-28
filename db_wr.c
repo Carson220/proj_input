@@ -6,8 +6,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include "db_wr.h"
+#include "topo.h"
 
-DB_RESULT redis_connect(redisContext **context, char *redis_ip)
+RET_RESULT redis_connect(redisContext **context, char *redis_ip)
 {
     if(*context)
         redisFree(*context);
@@ -27,9 +28,9 @@ DB_RESULT redis_connect(redisContext **context, char *redis_ip)
 函数功能:执行redis 返回值为int类型命令
 输入参数:cmd  redis命令
 输出参数:
-返回值:DB_RESULT
+返回值:RET_RESULT
 *************************************/
-DB_RESULT exeRedisIntCmd(char *cmd, char *redis_ip)
+RET_RESULT exeRedisIntCmd(char *cmd, char *redis_ip)
 {
     redisContext *context;
     redisReply *reply;
@@ -59,7 +60,7 @@ DB_RESULT exeRedisIntCmd(char *cmd, char *redis_ip)
     return SUCCESS;
 }
 
-DB_RESULT Set_Active_Ctrl(uint32_t sw, uint32_t ctrl, int slot, char *redis_ip)
+RET_RESULT Set_Active_Ctrl(uint32_t sw, uint32_t ctrl, int slot, char *redis_ip)
 {
 	char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
@@ -79,7 +80,7 @@ DB_RESULT Set_Active_Ctrl(uint32_t sw, uint32_t ctrl, int slot, char *redis_ip)
     return SUCCESS;
 }
 
-DB_RESULT Set_Standby_Ctrl(uint32_t sw, uint32_t ctrl, int slot, char *redis_ip)
+RET_RESULT Set_Standby_Ctrl(uint32_t sw, uint32_t ctrl, int slot, char *redis_ip)
 {
 	char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
@@ -99,7 +100,7 @@ DB_RESULT Set_Standby_Ctrl(uint32_t sw, uint32_t ctrl, int slot, char *redis_ip)
     return SUCCESS;
 }
 
-DB_RESULT Add_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char *redis_ip)
+RET_RESULT Add_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
@@ -119,7 +120,7 @@ DB_RESULT Add_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char *redis_ip)
     return SUCCESS;
 }
 
-DB_RESULT Del_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char *redis_ip)
+RET_RESULT Del_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
@@ -139,7 +140,7 @@ DB_RESULT Del_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char *redis_ip)
     return SUCCESS;
 }
 
-DB_RESULT Set_Ctrl_Conn_Db(uint32_t ctrl, uint32_t db, int slot, char *redis_ip)
+RET_RESULT Set_Ctrl_Conn_Db(uint32_t ctrl, uint32_t db, int slot, char *redis_ip)
 {
 	char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
@@ -159,7 +160,7 @@ DB_RESULT Set_Ctrl_Conn_Db(uint32_t ctrl, uint32_t db, int slot, char *redis_ip)
     return SUCCESS;
 }
 
-DB_RESULT Set_Topo(uint32_t sw1, uint32_t sw2, uint64_t delay, int slot, char *redis_ip)
+RET_RESULT Set_Topo(uint32_t sw1, uint32_t sw2, uint64_t delay, int slot, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t sw = (((uint64_t)sw1) << 32) + sw2;
@@ -195,7 +196,7 @@ DB_RESULT Set_Topo(uint32_t sw1, uint32_t sw2, uint64_t delay, int slot, char *r
     return SUCCESS;
 }
 
-DB_RESULT Add_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
+RET_RESULT Add_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t sw = (((uint64_t)sw1) << 32) + sw2;
@@ -232,7 +233,7 @@ DB_RESULT Add_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
     return SUCCESS;
 }
 
-DB_RESULT Del_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
+RET_RESULT Del_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t sw = (((uint64_t)sw1) << 32) + sw2;
@@ -268,7 +269,7 @@ DB_RESULT Del_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
     return SUCCESS;
 }
 
-DB_RESULT Set_Dfl_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot, char *redis_ip)
+RET_RESULT Set_Dfl_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot, char *redis_ip)
 {
 	char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
@@ -288,7 +289,7 @@ DB_RESULT Set_Dfl_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot,
     return SUCCESS;
 }
 
-DB_RESULT Set_Cal_Route(char *ip_src, char *ip_dst, char *out_sw_port, char *redis_ip)
+RET_RESULT Set_Cal_Route(char *ip_src, char *ip_dst, char *out_sw_port, char *redis_ip)
 {
 	char cmd[CMD_MAX_LENGHT] = {0};
     
@@ -324,7 +325,7 @@ DB_RESULT Set_Cal_Route(char *ip_src, char *ip_dst, char *out_sw_port, char *red
     return SUCCESS;
 }
 
-DB_RESULT Set_Cal_Fail_Route(char *ip_src, char *ip_dst, char *redis_ip)
+RET_RESULT Set_Cal_Fail_Route(char *ip_src, char *ip_dst, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
 
@@ -345,7 +346,7 @@ DB_RESULT Set_Cal_Fail_Route(char *ip_src, char *ip_dst, char *redis_ip)
     return SUCCESS;
 }
 
-DB_RESULT Set_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
+RET_RESULT Set_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t sw = (((uint64_t)sw1) << 32) + sw2;
@@ -366,7 +367,7 @@ DB_RESULT Set_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
     return SUCCESS;
 }
 
-DB_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
+RET_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t sw = (((uint64_t)sw1) << 32) + sw2;
@@ -402,7 +403,7 @@ DB_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
     return SUCCESS;
 }
 
-DB_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, char *redis_ip)
+RET_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
@@ -422,7 +423,7 @@ DB_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, cha
     return SUCCESS;
 }
 
-DB_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, char *redis_ip)
+RET_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     redisContext *context;
@@ -499,7 +500,7 @@ DB_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, char *redis_ip)
     return SUCCESS;
 }
 
-DB_RESULT Add_Rt_Set_Time(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char *redis_ip)
+RET_RESULT Add_Rt_Set_Time(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
@@ -517,7 +518,6 @@ DB_RESULT Add_Rt_Set_Time(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, ch
     }
     printf("del rt_set_t_%02d_%02d_%02d success\n", sw1, sw2, (slot-1+SLOT_NUM)%SLOT_NUM);
     
-    char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "sadd rt_set_t_%02d_%02d_%02d %s%s",
              sw1, sw2, slot, ip_src, ip_dst);
@@ -535,7 +535,7 @@ DB_RESULT Add_Rt_Set_Time(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, ch
     return SUCCESS;
 }
 
-DB_RESULT Mov_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char *redis_ip)
+RET_RESULT Mov_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
@@ -555,7 +555,7 @@ DB_RESULT Mov_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *i
     return SUCCESS;
 }
 
-DB_RESULT Diff_Topo(int slot, char *redis_ip)
+RET_RESULT Diff_Topo(int slot, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     redisContext *context;
@@ -682,7 +682,7 @@ uint32_t Get_Standby_Ctrl(uint32_t sw, int slot, char *redis_ip)
     return ret;
 }
 
-DB_RESULT Lookup_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char *redis_ip)
+RET_RESULT Lookup_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     redisContext *context;
@@ -768,7 +768,7 @@ uint32_t Get_Ctrl_Conn_Db(uint32_t ctrl, int slot, char *redis_ip)
     return ret;
 }
 
-DB_RESULT Get_Topo(int slot, char *redis_ip, tp_sw sw_list[SW_NUM])
+RET_RESULT Get_Topo(int slot, char *redis_ip, tp_sw sw_list[SW_NUM])
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     redisContext *context;
@@ -832,7 +832,7 @@ DB_RESULT Get_Topo(int slot, char *redis_ip, tp_sw sw_list[SW_NUM])
     return SUCCESS;
 }
 
-DB_RESULT Get_Real_Topo(int slot, char *redis_ip, tp_sw sw_list[SW_NUM])
+RET_RESULT Get_Real_Topo(int slot, char *redis_ip, tp_sw sw_list[SW_NUM])
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     redisContext *context;
@@ -896,7 +896,7 @@ DB_RESULT Get_Real_Topo(int slot, char *redis_ip, tp_sw sw_list[SW_NUM])
     return SUCCESS;
 }
 
-DB_RESULT Lookup_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
+RET_RESULT Lookup_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t sw = (((uint64_t)sw1) << 32) + sw2;
@@ -987,7 +987,7 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char *redis_ip
 
 /**********************************************************************************************************************/
 
-// DB_RESULT Set_Link_Delay(uint32_t port1, uint32_t port2, uint64_t delay)
+// RET_RESULT Set_Link_Delay(uint32_t port1, uint32_t port2, uint64_t delay)
 // {
 //     char cmd[CMD_MAX_LENGHT] = {0};
 //     uint64_t port = (((uint64_t)port1) << 32) + port2;
@@ -1008,7 +1008,7 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char *redis_ip
 //     return SUCCESS;
 // }
 
-// DB_RESULT Clr_Link_Delay(uint32_t port1, uint32_t port2)
+// RET_RESULT Clr_Link_Delay(uint32_t port1, uint32_t port2)
 // {
 //     char cmd[CMD_MAX_LENGHT] = {0};
 //     uint64_t port = (((uint64_t)port1) << 32) + port2;
@@ -1030,7 +1030,7 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char *redis_ip
 //     return SUCCESS;
 // }
 
-// DB_RESULT Set_Pc_Sw_Port(uint32_t ip, uint32_t port)
+// RET_RESULT Set_Pc_Sw_Port(uint32_t ip, uint32_t port)
 // {
 //     char cmd[CMD_MAX_LENGHT] = {0};
 //     /*组装redis命令*/
@@ -1050,7 +1050,7 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char *redis_ip
 //     return SUCCESS;
 // }
 
-// DB_RESULT Set_Sw_Delay(uint16_t cid, uint8_t sid, uint64_t delay)
+// RET_RESULT Set_Sw_Delay(uint16_t cid, uint8_t sid, uint64_t delay)
 // {
 //     char cmd[CMD_MAX_LENGHT] = {0};
 //     uint32_t id = (((uint32_t)cid) << 16) + (((uint16_t)sid) << 8);
@@ -1071,7 +1071,7 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char *redis_ip
 //     return SUCCESS;
 // }
 
-// DB_RESULT Clr_Sw_Delay(uint16_t cid, uint8_t sid)
+// RET_RESULT Clr_Sw_Delay(uint16_t cid, uint8_t sid)
 // {
 //     char cmd[CMD_MAX_LENGHT] = {0};
 //     uint32_t id = (((uint32_t)cid) << 16) + (((uint16_t)sid) << 8);
@@ -1093,7 +1093,7 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char *redis_ip
 //     return SUCCESS;
 // }
 
-// DB_RESULT Set_Route(uint32_t ip_src, uint32_t ip_dst, uint32_t out_sw_port)
+// RET_RESULT Set_Route(uint32_t ip_src, uint32_t ip_dst, uint32_t out_sw_port)
 // {
 //     char cmd[CMD_MAX_LENGHT] = {0};
 //     uint64_t ip = (((uint64_t)ip_src) << 32) + ip_dst;
@@ -1114,7 +1114,7 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char *redis_ip
 //     return SUCCESS;
 // }
 
-// DB_RESULT Clr_Route(uint32_t ip_src, uint32_t ip_dst)
+// RET_RESULT Clr_Route(uint32_t ip_src, uint32_t ip_dst)
 // {
 //     char cmd[CMD_MAX_LENGHT] = {0};
 //     uint64_t ip = (((uint64_t)ip_src) << 32) + ip_dst;
