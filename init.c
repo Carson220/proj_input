@@ -108,7 +108,7 @@ int main(int argc,char *argv[])
             while(fgetc(fp) == ' ')
             {
                 fscanf(fp, "%d", &ctrl);
-                Set_Active_Ctrl(ctrl, db, i, redis_ip);
+                Set_Ctrl_Conn_Db(ctrl, db, i, redis_ip);
             }
         }
 

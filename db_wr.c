@@ -13,10 +13,11 @@ RET_RESULT redis_connect(redisContext **context, char* redis_ip)
     if(*context)
         redisFree(*context);
 	*context = redisConnect(redis_ip, REDIS_SERVER_PORT);
+    
     if((*context)->err)
     {
-        redisFree(*context);
         printf("%d connect redis server failure:%s\n", __LINE__, (*context)->errstr);
+        redisFree(*context);
         return FAILURE;
     }
 	// printf("connect redis server success\n");
@@ -34,7 +35,8 @@ RET_RESULT exeRedisIntCmd(char *cmd, char *redis_ip)
 {
     redisContext *context = NULL;
     redisReply *reply = NULL;
-    RET_RESULT ret = FAILURE;
+    RET_RESULT ret = redis_connect(&context, redis_ip);
+    usleep(3000);
 
     /*检查入参*/
     if (NULL == cmd)
@@ -44,9 +46,11 @@ RET_RESULT exeRedisIntCmd(char *cmd, char *redis_ip)
     }
 
     /*连接redis*/
+
     while(ret == FAILURE)
     {
         context = NULL;
+        sleep(1);
         ret = redis_connect(&context, redis_ip); 
     }
 

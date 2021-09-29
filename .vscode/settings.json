@@ -1,5 +1,9 @@
 {
     "files.associations": {
-        "errno.h": "c"
+        "errno.h": "c",
+        "limits.h": "c",
+        "sockcompat.h": "c",
+        "win32.h": "c",
+        "string.h": "c"
     }
 }
