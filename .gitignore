@@ -27,6 +27,7 @@
 /hiredis_ssl.pc.in
 /libhiredis.a
 /libhiredis.so
+/init
 /monitor
 /monitor1
 /monitor1.c
