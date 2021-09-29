@@ -135,8 +135,8 @@ int main(int argc,char *argv[])
                 fscanf(fp, "%d", &sw2);
                 fgets(out_sw_port, CMD_MAX_LENGHT, fp);
                
-                snprintf(ip_src, addr_len, "C0A842%x", sw1+1); // 192.168.66.X
-                snprintf(ip_dst, addr_len, "C0A842%x", sw2+1);
+                snprintf(ip_src, addr_len, "C0A842%02x", sw1+1); // 192.168.66.X
+                snprintf(ip_dst, addr_len, "C0A842%02x", sw2+1);
 
                 Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
             }
@@ -160,8 +160,8 @@ int main(int argc,char *argv[])
                 fscanf(fp, "%d", &sw2);
                 fgets(out_sw_port, CMD_MAX_LENGHT, fp);
                
-                snprintf(ip_src, addr_len, "C0A844%x", sw1+1); // 192.168.68.X
-                snprintf(ip_dst, addr_len, "C0A844%x", sw2+1);
+                snprintf(ip_src, addr_len, "C0A844%02x", sw1+1); // 192.168.68.X
+                snprintf(ip_dst, addr_len, "C0A844%02x", sw2+1);
 
                 Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
             }
@@ -181,15 +181,15 @@ int main(int argc,char *argv[])
             fscanf(fp, "%d", &sw1);
             fscanf(fp, "%d", &sw2);
             fgets(out_sw_port, CMD_MAX_LENGHT, fp);
-            snprintf(ip_src, addr_len, "C0A843%x", sw1+1); // 192.168.67.X
-            snprintf(ip_dst, addr_len, "C0A842%x", sw2+1); // 192.168.66.X
+            snprintf(ip_src, addr_len, "C0A843%02x", sw1+1); // 192.168.67.X
+            snprintf(ip_dst, addr_len, "C0A842%02x", sw2+1); // 192.168.66.X
             Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
 
             fscanf(fp, "%d", &sw1);
             fscanf(fp, "%d", &sw2);
             fgets(out_sw_port, CMD_MAX_LENGHT, fp);
-            snprintf(ip_src, addr_len, "C0A842%x", sw1+1); // 192.168.66.X
-            snprintf(ip_dst, addr_len, "C0A843%x", sw2+1); // 192.168.67.X
+            snprintf(ip_src, addr_len, "C0A842%02x", sw1+1); // 192.168.66.X
+            snprintf(ip_dst, addr_len, "C0A843%02x", sw2+1); // 192.168.67.X
             Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
         }
         fclose(fp);
@@ -207,15 +207,15 @@ int main(int argc,char *argv[])
             fscanf(fp, "%d", &sw1);
             fscanf(fp, "%d", &sw2);
             fgets(out_sw_port, CMD_MAX_LENGHT, fp);
-            snprintf(ip_src, addr_len, "C0A844%x", sw1+1); // 192.168.68.X
-            snprintf(ip_dst, addr_len, "C0A843%x", sw2+1); // 192.168.67.X
+            snprintf(ip_src, addr_len, "C0A844%02x", sw1+1); // 192.168.68.X
+            snprintf(ip_dst, addr_len, "C0A843%02x", sw2+1); // 192.168.67.X
             Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
 
             fscanf(fp, "%d", &sw1);
             fscanf(fp, "%d", &sw2);
             fgets(out_sw_port, CMD_MAX_LENGHT, fp);
-            snprintf(ip_src, addr_len, "C0A843%x", sw1+1); // 192.168.67.X
-            snprintf(ip_dst, addr_len, "C0A844%x", sw2+1); // 192.168.68.X
+            snprintf(ip_src, addr_len, "C0A843%02x", sw1+1); // 192.168.67.X
+            snprintf(ip_dst, addr_len, "C0A844%02x", sw2+1); // 192.168.68.X
             Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
         }
         fclose(fp);
