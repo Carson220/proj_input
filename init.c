@@ -9,7 +9,7 @@
 #define slot_num 44
 #define db_num 6
 #define fname_len 50
-#define addr_len 8
+#define addr_len 8 + 1
 #define redis_ip_len 20
 #define DB_ID 1 // database_id = 192.168.68.2
 
