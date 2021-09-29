@@ -20,13 +20,12 @@
 #include <errno.h>
 #include <pthread.h>
 #include "db_wr.h"
-#include "db_wr.c"
 
 #define MAX_NUM 66
 #define CMD_MAX_LENGHT 256
 #define REDIS_SERVER_IP "192.168.10.118"
 
-#define REDIS_SERVER_PORT 8102
+#define REDIS_SERVER_PORT 6379
 
 #define DB_ID 2 // database_id = 192.168.68.2
 #define SERVER_IP "127.0.0.1" // tcp+udp ip

@@ -36,12 +36,12 @@
 
 #include "hiredis.h"
 #include "topo.h"
-#include "topo.c"
 
 /*宏定义*/
 #define CMD_MAX_LENGHT 256
 // #define REDIS_SERVER_IP "192.168.10.215"
 #define REDIS_SERVER_PORT 8102
+#define redis_ip_len 20
 
 #ifndef RETURN_RESULT
 #define RETURN_RESULT
@@ -63,34 +63,34 @@ typedef enum RET_RESULT
 // RET_RESULT Clr_Route(uint32_t ip_src, uint32_t ip_dst);                      /*清除路由信息*/
 
 // write switch <-> controller(active and standby)
-RET_RESULT Set_Active_Ctrl(uint32_t sw, uint32_t ctrl, int slot, char *redis_ip);
-RET_RESULT Set_Standby_Ctrl(uint32_t sw, uint32_t ctrl, int slot, char *redis_ip);
+RET_RESULT Set_Active_Ctrl(uint32_t sw, uint32_t ctrl, int slot, char* redis_ip);
+RET_RESULT Set_Standby_Ctrl(uint32_t sw, uint32_t ctrl, int slot, char* redis_ip);
 // write controller <-> switches set
-RET_RESULT Add_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char *redis_ip);
-RET_RESULT Del_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char *redis_ip);
+RET_RESULT Add_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip);
+RET_RESULT Del_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip);
 // write controller <-> database
-RET_RESULT Set_Ctrl_Conn_Db(uint32_t ctrl, uint32_t db, int slot, char *redis_ip);
+RET_RESULT Set_Ctrl_Conn_Db(uint32_t ctrl, uint32_t db, int slot, char* redis_ip);
 // write default topo
-RET_RESULT Set_Topo(uint32_t sw1, uint32_t sw2, uint64_t delay, int slot, char *redis_ip);
+RET_RESULT Set_Topo(uint32_t sw1, uint32_t sw2, uint64_t delay, int slot, char* redis_ip);
 // write real topo that links must be connected
-RET_RESULT Add_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip);
-RET_RESULT Del_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip);
+RET_RESULT Add_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip);
+RET_RESULT Del_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip);
 // write default routes(s2s/d2d/c2s/c2d)
-RET_RESULT Set_Dfl_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot, char *redis_ip);
-RET_RESULT Set_Cal_Route(char *ip_src, char *ip_dst, char *out_sw_port, char *redis_ip);
-RET_RESULT Set_Cal_Fail_Route(char *ip_src, char *ip_dst, char *redis_ip);
+RET_RESULT Set_Dfl_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot, char* redis_ip);
+RET_RESULT Set_Cal_Route(char *ip_src, char *ip_dst, char *out_sw_port, char* redis_ip);
+RET_RESULT Set_Cal_Fail_Route(char *ip_src, char *ip_dst, char* redis_ip);
 // write links that next slot will be deleted
-RET_RESULT Set_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip);
+RET_RESULT Set_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip);
 // write links that have been disconnected
 //注意：何时清空失效链路列表？下一个时间片
-RET_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip); 
+RET_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip); 
 // write link <-> routes set
-RET_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, char *redis_ip);
-RET_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, char *redis_ip);
-RET_RESULT Add_Rt_Set_Time(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char *redis_ip);
-RET_RESULT Mov_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char *redis_ip);
+RET_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, char* redis_ip);
+RET_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, char* redis_ip);
+RET_RESULT Add_Rt_Set_Time(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char* redis_ip);
+RET_RESULT Mov_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char* redis_ip);
 // write fail_link(dfl_set - real_set)
-RET_RESULT Diff_Topo(int slot, char *redis_ip);
+RET_RESULT Diff_Topo(int slot, char* redis_ip);
 
 
 /*读函数*/
@@ -100,21 +100,21 @@ RET_RESULT Diff_Topo(int slot, char *redis_ip);
 // uint64_t Get_Sw_Delay(uint16_t cid, uint8_t sid);        /*获取交换机到控制器的时延*/
 
 // read switch <-> controller(active and standby)
-uint32_t Get_Active_Ctrl(uint32_t sw, int slot, char *redis_ip);
-uint32_t Get_Standby_Ctrl(uint32_t sw, int slot, char *redis_ip);
+uint32_t Get_Active_Ctrl(uint32_t sw, int slot, char* redis_ip);
+uint32_t Get_Standby_Ctrl(uint32_t sw, int slot, char* redis_ip);
 // lookup controller <-> switches set
-RET_RESULT Lookup_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char *redis_ip);
+RET_RESULT Lookup_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip);
 // read controller <-> database
-uint32_t Get_Ctrl_Conn_Db(uint32_t ctrl, int slot, char *redis_ip);
+uint32_t Get_Ctrl_Conn_Db(uint32_t ctrl, int slot, char* redis_ip);
 //read default topo from redis to sw_list
-RET_RESULT Get_Topo(int slot, char *redis_ip, tp_sw sw_list[SW_NUM]);
+RET_RESULT Get_Topo(int slot, char* redis_ip, tp_sw sw_list[SW_NUM]);
 //read real topo from redis to sw_list
-RET_RESULT Get_Real_Topo(int slot, char *redis_ip, tp_sw sw_list[SW_NUM]);
+RET_RESULT Get_Real_Topo(int slot, char* redis_ip, tp_sw sw_list[SW_NUM]);
 // lookup whether link will be deleted in next slot
-RET_RESULT Lookup_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char *redis_ip);
+RET_RESULT Lookup_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip);
 // read link delay
-uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char *redis_ip);
+uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char* redis_ip);
 
 /*执行命令*/
-RET_RESULT redis_connect(redisContext **context, char *redis_ip);
-RET_RESULT exeRedisIntCmd(char *cmd, char *redis_ip); // 写操作返回int
+RET_RESULT redis_connect(redisContext **context, char* redis_ip);
+RET_RESULT exeRedisIntCmd(char *cmd, char* redis_ip); // 写操作返回int
