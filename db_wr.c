@@ -610,7 +610,7 @@ RET_RESULT Diff_Topo(int slot, int DB_ID, char* redis_ip)
 
         // 判断该fail_link属于本区域
         ctrl_id = Get_Active_Ctrl((uint32_t)sw1, slot, redis_ip);
-        if(Lookup_Sw_Set((uint32_t)ctrl_id, (uint32_t)sw, slot, redis_ip) == FAILURE)
+        if(Lookup_Sw_Set((uint32_t)ctrl_id, (uint32_t)sw1, slot, redis_ip) == FAILURE)
         {
             ctrl_id = Get_Standby_Ctrl((uint32_t)sw1, slot, redis_ip);
         }
