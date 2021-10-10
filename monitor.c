@@ -109,6 +109,7 @@ void *tcpconnect(void *pth_arg)
 
     // 使用accept阻塞形式得监听客户端的发来的连接，并返回通信描述符
 	long cfd = -1;
+    int ctrl_id = -1;
 	pthread_t id;
 	while(1) 
     {
@@ -123,15 +124,16 @@ void *tcpconnect(void *pth_arg)
 		printf("cport = %d, caddr = %s\n", ntohs(caddr.sin_port),inet_ntoa(caddr.sin_addr));
         // printf("ctrl_id = %d\n", ((inet_addr(inet_ntoa(caddr.sin_addr)))&0xff000000)>>24);
         // 记录SDN控制器对应的套接字描述符
-        fd[(((inet_addr(inet_ntoa(caddr.sin_addr)))&0xff000000)>>24)] = cfd;
-
+        ctrl_id = (((inet_addr(inet_ntoa(caddr.sin_addr)))&0xff000000)>>24) -1;
+        if(fd[ctrl_id] != 0)close(fd[ctrl_id]);
+        fd[ctrl_id] = cfd;
 	}
 }
 
 void *work_thread(void *pth_arg)
 {
     // 校对topo将失效链路加入fail_link
-    Diff_Topo(slot, REDIS_SERVER_IP);
+    Diff_Topo(slot, DB_ID, REDIS_SERVER_IP);
 
 /****************************************************************************/
     // 根据del_link遍历路由条目调整定时
@@ -146,8 +148,8 @@ void *work_thread(void *pth_arg)
     long cfd = -1;
     int ret = -1;
     char buf[BUFSIZE] = {0,};
-    char ip_src[IP_LEN] = {0,};
-    char ip_dst[IP_LEN] = {0,};
+    char ip_src[IP_LEN+1] = {0,};
+    char ip_dst[IP_LEN+1] = {0,};
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "smembers del_link_%02d", slot);
@@ -223,10 +225,12 @@ void *work_thread(void *pth_arg)
 
                 // 向对应控制器发送定时通告
                 cfd = fd[ctrl_id];
+                // printf("cfd:%ld\n", cfd);
                 // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,timeout:3
-                bzero(&buf, sizeof(buf));
+                // bzero(&buf, sizeof(buf));
+                memset(buf, 0, BUFSIZE);
                 snprintf(buf, BUFSIZE, "%d%03ld%s%03d%03d", ROUTE_ADD, sw, reply2->element[i]->str, 0, (SLOT_TIME - SLOT_TIME/4));
-                ret = send(cfd, buf, sizeof(buf), 0);
+                ret = send(cfd, buf, BUFSIZE, 0);
                 if (ret == -1)
                 {
                     print_err("send route failed", __LINE__, errno);
@@ -297,11 +301,11 @@ int route_add(char *obj, int flag)
     // strncpy(slot_str, obj+14, 2);
     // int slot = atoi(slot_str);
 
-    char ip_src[IP_LEN] = {0,};
-    char ip_dst[IP_LEN] = {0,};
+    char ip_src[IP_LEN+1] = {0,};
+    char ip_dst[IP_LEN+1] = {0,};
     int timeout = 0;
-    strncpy(ip_src, obj + 6, IP_LEN);
-    strncpy(ip_dst, obj + 6 + IP_LEN, IP_LEN);
+    strncpy(ip_src, &obj[6], IP_LEN);
+    strncpy(ip_dst, &obj[6 + IP_LEN], IP_LEN);
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "lrange %s 0 -1", obj);
@@ -326,14 +330,16 @@ int route_add(char *obj, int flag)
     }
 
     // 输出查询结果
-    printf("\tentry num = %lu\n",reply->elements);
+    // printf("\tentry num = %lu\n",reply->elements);
     if(reply->elements == 0) return -1;
     for(i = 0; i < reply->elements; i++)
     {
-        printf("\tout_sw_port: %s\n",reply->element[i]->str);
+        // printf("\tout_sw_port: %s\n",reply->element[i]->str);
         sw = atoi(reply->element[i]->str)/1000;
         port = atoi(reply->element[i]->str)%1000;
+        // printf("sw:%u, outport:%u\n", sw, port);
         ctrl_id = Get_Active_Ctrl((uint32_t)sw, slot, REDIS_SERVER_IP);
+        // printf("ctrl_id:%u\n", ctrl_id);
         if(Lookup_Sw_Set((uint32_t)ctrl_id, (uint32_t)sw, slot, REDIS_SERVER_IP) == FAILURE)
         {
             ctrl_id = Get_Standby_Ctrl((uint32_t)sw, slot, REDIS_SERVER_IP);
@@ -344,6 +350,7 @@ int route_add(char *obj, int flag)
         if(db_id == DB_ID)
         {
             cfd = fd[ctrl_id]; 
+            // printf("cfd:%ld\n", cfd);
             if(flag == FAILURE)
             {
                 timeout = 5;
@@ -366,9 +373,11 @@ int route_add(char *obj, int flag)
             }
 
             // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,timeout:3
-            bzero(&buf, sizeof(buf));
+            memset(buf, 0, BUFSIZE);
+            printf("db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, timeout:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, timeout);
             snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, timeout);
-            ret = send(cfd, buf, sizeof(buf), 0);
+            printf("buf:%s\n",buf);
+            ret = send(cfd, buf, BUFSIZE, 0);
             if (ret == -1)
             {
                 print_err("send route failed", __LINE__, errno);
@@ -408,9 +417,9 @@ int route_del(char *obj, int index)
     long cfd = -1;
     int ret = -1;
     char buf[BUFSIZE] = {0,};
-    char ip_src[IP_LEN] = {0,};
-    char ip_dst[IP_LEN] = {0,};
-    char ip_src_two[IP_LEN/4] = {0,}; // ip_src最后两位
+    char ip_src[IP_LEN+1] = {0,};
+    char ip_dst[IP_LEN+1] = {0,};
+    char ip_src_two[IP_LEN/4+1] = {0,}; // ip_src最后两位
 
     char slot_str[2] = {0,};
     strncpy(slot_str, obj+10, 2);
@@ -490,11 +499,11 @@ int route_del(char *obj, int index)
         if(db_id == DB_ID)
         {
             cfd = fd[ctrl_id];
-
+            // printf("cfd:%ld\n", cfd);
             // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,timeout:3
-            bzero(&buf, sizeof(buf));
+            memset(buf, 0, BUFSIZE);
             snprintf(buf, BUFSIZE, "%d%03ld%s%03d%03d", ROUTE_DEL, sw, reply->element[i]->str, 0, 0);
-            ret = send(cfd, buf, sizeof(buf), 0);
+            ret = send(cfd, buf, BUFSIZE, 0);
             if (ret == -1)
             {
                 print_err("send route failed", __LINE__, errno);
@@ -597,6 +606,7 @@ void disconnectCallback(const redisAsyncContext *c, int status)
 int main(int argc, char **argv) 
 {
     long skfd = -1, ret = -1;
+    
 	skfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (skfd == -1) 
     {

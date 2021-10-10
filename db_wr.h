@@ -90,7 +90,7 @@ RET_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, char* redis_ip);
 RET_RESULT Add_Rt_Set_Time(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char* redis_ip);
 RET_RESULT Mov_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char* redis_ip);
 // write fail_link(dfl_set - real_set)
-RET_RESULT Diff_Topo(int slot, char* redis_ip);
+RET_RESULT Diff_Topo(int slot, int DB_ID, char* redis_ip);
 
 
 /*读函数*/

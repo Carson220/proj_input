@@ -5,8 +5,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "db_wr.h"
 #include "topo.h"
+#include "global.h"
 
 RET_RESULT redis_connect(redisContext **context, char* redis_ip)
 {
@@ -36,7 +38,7 @@ RET_RESULT exeRedisIntCmd(char *cmd, char *redis_ip)
     redisContext *context = NULL;
     redisReply *reply = NULL;
     RET_RESULT ret = redis_connect(&context, redis_ip);
-    usleep(3000);
+    // usleep(3000);
 
     /*检查入参*/
     if (NULL == cmd)
@@ -58,14 +60,14 @@ RET_RESULT exeRedisIntCmd(char *cmd, char *redis_ip)
     reply = (redisReply *)redisCommand(context, cmd);
     if (NULL == reply)
     {
-        printf("%d execute command:%s failure\n", __LINE__, cmd);
+        // printf("%d execute command:%s failure\n", __LINE__, cmd);
         redisFree(context);
         return FAILURE;
     }
 
     freeReplyObject(reply);
     redisFree(context);
-    printf("%d execute command:%s success\n", __LINE__, cmd);
+    // printf("%d execute command:%s success\n", __LINE__, cmd);
     return SUCCESS;
 }
 
@@ -435,8 +437,8 @@ RET_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, ch
 RET_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, char* redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
-    redisContext *context;
-    redisReply *reply;
+    redisContext *context=NULL;
+    redisReply *reply=NULL;
     uint32_t sw1, sw2;
     int i = 0;
 
@@ -564,14 +566,16 @@ RET_RESULT Mov_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *
     return SUCCESS;
 }
 
-RET_RESULT Diff_Topo(int slot, char* redis_ip)
+RET_RESULT Diff_Topo(int slot, int DB_ID, char* redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
-    redisContext *context;
-    redisReply *reply;
+    redisContext *context=NULL;
+    redisReply *reply=NULL;
     uint64_t sw = 0;
     uint32_t sw1, sw2 = 0;
     int i = 0;
+    int ctrl_id = 0; // 记录控制器ID
+    int db_id = 0;
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "sdiff dfl_set_%02d real_set_%02d", slot, slot);
@@ -603,7 +607,17 @@ RET_RESULT Diff_Topo(int slot, char* redis_ip)
         sw = atol(reply->element[i]->str);
         sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
         sw2 = (uint32_t)(sw & 0x00000000ffffffff);
-        Set_Fail_Link(sw1, sw2, slot, redis_ip);
+
+        // 判断该fail_link属于本区域
+        ctrl_id = Get_Active_Ctrl((uint32_t)sw1, slot, redis_ip);
+        if(Lookup_Sw_Set((uint32_t)ctrl_id, (uint32_t)sw, slot, redis_ip) == FAILURE)
+        {
+            ctrl_id = Get_Standby_Ctrl((uint32_t)sw1, slot, redis_ip);
+        }
+        db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, slot, redis_ip);
+
+        if(db_id == DB_ID)
+            Set_Fail_Link(sw1, sw2, slot, redis_ip);
     }
 
     freeReplyObject(reply);
@@ -617,8 +631,8 @@ uint32_t Get_Active_Ctrl(uint32_t sw, int slot, char* redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     uint32_t ret = -1;
-    redisContext *context;
-    redisReply *reply;
+    redisContext *context=NULL;
+    redisReply *reply=NULL;
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "hget active_ctrl_%02d %u",
@@ -642,7 +656,7 @@ uint32_t Get_Active_Ctrl(uint32_t sw, int slot, char* redis_ip)
     //输出查询结果
     if(reply->str == NULL)
     {
-        printf("return NULL\n");
+        printf("%d Get_Active_Ctrl: failure\n", __LINE__);
         return ret;
     }
     printf("active_ctrl_%02d sw:%u, ctrl:%s\n", slot, sw, reply->str);
@@ -656,8 +670,8 @@ uint32_t Get_Standby_Ctrl(uint32_t sw, int slot, char* redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     uint32_t ret = -1;
-    redisContext *context;
-    redisReply *reply;
+    redisContext *context=NULL;
+    redisReply *reply=NULL;
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "hget standby_ctrl_%02d %u",
@@ -681,7 +695,7 @@ uint32_t Get_Standby_Ctrl(uint32_t sw, int slot, char* redis_ip)
     //输出查询结果
     if(reply->str == NULL)
     {
-        printf("return NULL\n");
+        printf("%d Get_Standby_Ctrl: failure\n", __LINE__);
         return ret;
     }
     printf("standby_ctrl_%02d sw:%u, ctrl:%s\n", slot, sw, reply->str);
@@ -694,8 +708,8 @@ uint32_t Get_Standby_Ctrl(uint32_t sw, int slot, char* redis_ip)
 RET_RESULT Lookup_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
-    redisContext *context;
-    redisReply *reply;
+    redisContext *context=NULL;
+    redisReply *reply=NULL;
 
     /*组装redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "sismember sw_set_%02d_%02d %u",
@@ -717,12 +731,7 @@ RET_RESULT Lookup_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip)
     }
 
     //输出查询结果
-    if(reply->str == NULL)
-    {
-        printf("return NULL\n");
-        return FAILURE;
-    }
-    else if(atoi(reply->str) == 1)
+    if(reply->integer == 1)
     {
         printf("sw:%u exists in sw_set_ctrl%02d_%02d\n", sw, ctrl, slot);
         freeReplyObject(reply);
@@ -742,8 +751,8 @@ uint32_t Get_Ctrl_Conn_Db(uint32_t ctrl, int slot, char* redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     uint32_t ret = -1;
-    redisContext *context;
-    redisReply *reply;
+    redisContext *context=NULL;
+    redisReply *reply=NULL;
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "hget db_%02d %u",
@@ -767,7 +776,7 @@ uint32_t Get_Ctrl_Conn_Db(uint32_t ctrl, int slot, char* redis_ip)
     //输出查询结果
     if(reply->str == NULL)
     {
-        printf("return NULL\n");
+        printf("%d Get_Ctrl_Conn_Db: fail\n", __LINE__);
         return ret;
     }
     printf("db_%02d ctrl:%u, db:%s\n", slot, ctrl, reply->str);
@@ -780,15 +789,15 @@ uint32_t Get_Ctrl_Conn_Db(uint32_t ctrl, int slot, char* redis_ip)
 RET_RESULT Get_Topo(int slot, char* redis_ip, tp_sw sw_list[SW_NUM])
 {
     char cmd[CMD_MAX_LENGHT] = {0};
-    redisContext *context;
-    redisReply *reply;
+    redisContext *context=NULL;
+    redisReply *reply=NULL;
 
-    uint32_t sw_dpid;
-    uint32_t sw_dpid_adj;
-    uint32_t port1, port2;
-    uint64_t sw, delay;
+    uint32_t sw_dpid=0;
+    uint32_t sw_dpid_adj=0;
+    uint32_t port1=0, port2=0;
+    uint64_t sw=0, delay=0;
 
-    int i, j;
+    int i;
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "hgetall dfl_topo_%02d", slot);
@@ -844,15 +853,15 @@ RET_RESULT Get_Topo(int slot, char* redis_ip, tp_sw sw_list[SW_NUM])
 RET_RESULT Get_Real_Topo(int slot, char* redis_ip, tp_sw sw_list[SW_NUM])
 {
     char cmd[CMD_MAX_LENGHT] = {0};
-    redisContext *context;
-    redisReply *reply;
+    redisContext *context=NULL;
+    redisReply *reply=NULL;
 
-    uint32_t sw_dpid;
-    uint32_t sw_dpid_adj;
-    uint32_t port1, port2;
-    uint64_t sw, delay;
+    uint32_t sw_dpid=0;
+    uint32_t sw_dpid_adj=0;
+    uint32_t port1=0, port2=0;
+    uint64_t sw=0, delay=0;
 
-    int i, j;
+    int i;
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "hgetall real_topo_%02d", slot);
@@ -873,16 +882,15 @@ RET_RESULT Get_Real_Topo(int slot, char* redis_ip, tp_sw sw_list[SW_NUM])
     }
 
     //输出查询结果
-    // printf("%d,%lu\n",reply->type,reply->elements);
+    printf("Get_Real_Topo:%d, element num = %lu\n",reply->type,reply->elements);
     // printf("element num = %lu\n",reply->elements);
     for(i = 0; i < reply->elements; i++)
     {
         if(i % 2 ==0)// port
         {
-            printf("real link %s delay: ",reply->element[i]->str);
             sw = atol(reply->element[i]->str);
             // c_log_debug("port = %lu", port);
-            
+            // printf("real link %lx delay: ",sw);
             sw_dpid = (uint32_t)((sw & 0xffffffff00000000) >> 32);
             // c_log_debug("sw1 = %x", sw1);
             sw_dpid_adj = (uint32_t)(sw & 0x00000000ffffffff);
@@ -894,7 +902,7 @@ RET_RESULT Get_Real_Topo(int slot, char* redis_ip, tp_sw sw_list[SW_NUM])
         }
         else// delay
         {
-            printf("%s us\n",reply->element[i]->str);
+            // printf("%s us\n",reply->element[i]->str);
             delay = atol(reply->element[i]->str);
             tp_add_link(sw_dpid, port1, sw_dpid_adj, port2, delay, sw_list);
         }
@@ -909,9 +917,8 @@ RET_RESULT Lookup_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t sw = (((uint64_t)sw1) << 32) + sw2;
-    redisContext *context;
-    redisReply *reply;
-    int i = 0;
+    redisContext *context=NULL;
+    redisReply *reply=NULL;
 
     /*组装redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "sismember del_link_%02d %lu",
@@ -933,12 +940,7 @@ RET_RESULT Lookup_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip)
     }
 
     //输出查询结果
-    if(reply->str == NULL)
-    {
-        printf("return NULL\n");
-        return FAILURE;
-    }
-    else if(atoi(reply->str) == 1)
+    if(reply->integer == 1)
     {
         printf("link:sw%02d<->sw%02d exists in del_link%02d\n", sw1, sw2, slot);
         freeReplyObject(reply);
@@ -947,22 +949,23 @@ RET_RESULT Lookup_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip)
     }
     else
     {
-        printf("link:sw%02d<->sw%02d don't exists in sdel_link%02d\n", sw1, sw2, slot);
+        printf("link:sw%02d<->sw%02d don't exists in del_link%02d\n", sw1, sw2, slot);
         freeReplyObject(reply);
         redisFree(context);
         return FAILURE;
     }
 }
 
-uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char* redis_ip)
+uint64_t Get_Link_Delay(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t ret = -1;
-    redisContext *context;
-    redisReply *reply;
+    redisContext *context=NULL;
+    redisReply *reply=NULL;
 
-    uint64_t port = (((uint64_t)port1) << 32) + port2;
+    uint64_t port = (((uint64_t)sw1) << 32) + sw2;
     /*组装redis命令*/
+    printf("getting topo_%02d link:sw%u<->sw%u\n", slot, sw1, sw2);
     snprintf(cmd, CMD_MAX_LENGHT, "hget dfl_topo_%02d %lu",
              slot, port);
     // for(int i=0;cmd[i]!='\0';i++)
@@ -970,7 +973,12 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char* redis_ip
     // printf("\n");
 
     /*连接redis*/
-    redis_connect(&context, redis_ip);
+    if(redis_connect(&context, redis_ip)==FAILURE)
+    {
+        printf("redis_connect failure\n");
+    }else{
+        printf("redis_connect success\n");
+    }
 
     /*执行redis命令*/
     reply = (redisReply *)redisCommand(context, cmd);
@@ -984,10 +992,10 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char* redis_ip
     //输出查询结果
     if(reply->str == NULL)
     {
-        printf("return NULL\n");
+        printf("%d Get_Link_Delay: get link delay fail\n", __LINE__);
         return ret;
     }
-    printf("set topo_%02d link:sw%u<->sw%u, delay:%s us failure\n", slot, port1, port2, reply->str);
+    printf("got topo_%02d link:sw%u<->sw%u, delay:%s us success\n", slot, sw1, sw2, reply->str);
     ret = atol(reply->str);
     freeReplyObject(reply);
     redisFree(context);
@@ -1148,8 +1156,8 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char* redis_ip
 // {
 //     char cmd[CMD_MAX_LENGHT] = {0};
 //     uint16_t ret = -1;
-//     redisContext *context;
-//     redisReply *reply;
+//     redisContext *context=NULL;
+//     redisReply *reply=NULL;
 
 //     /*组装Redis命令*/
 //     snprintf(cmd, CMD_MAX_LENGHT, "hget ctrl %u", ip);
@@ -1194,8 +1202,8 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char* redis_ip
 //     char cmd[CMD_MAX_LENGHT] = {0};
 //     uint64_t ret = -1;
 //     uint64_t port = (((uint64_t)port1) << 32) + port2;
-//     redisContext *context;
-//     redisReply *reply;
+//     redisContext *context=NULL;
+//     redisReply *reply=NULL;
 
 //     /*组装Redis命令*/
 //     snprintf(cmd, CMD_MAX_LENGHT, "hget link_delay %lu", port);
@@ -1239,8 +1247,8 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char* redis_ip
 // {
 //     char cmd[CMD_MAX_LENGHT] = {0};
 //     uint32_t ret = -1;
-//     redisContext *context;
-//     redisReply *reply;
+//     redisContext *context=NULL;
+//     redisReply *reply=NULL;
 
 //     /*组装Redis命令*/
 //     snprintf(cmd, CMD_MAX_LENGHT, "hget pc %u", ip);
@@ -1285,8 +1293,8 @@ uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char* redis_ip
 //     char cmd[CMD_MAX_LENGHT] = {0};
 //     uint16_t ret = -1;
 //     uint32_t id = (((uint32_t)cid) << 16) + (((uint16_t)sid) << 8);
-//     redisContext *context;
-//     redisReply *reply;
+//     redisContext *context=NULL;
+//     redisReply *reply=NULL;
 
 //     /*组装Redis命令*/
 //     snprintf(cmd, CMD_MAX_LENGHT, "hget sw %u", id);
