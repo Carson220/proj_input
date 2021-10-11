@@ -111,12 +111,51 @@ RET_RESULT Set_Standby_Ctrl(uint32_t sw, uint32_t ctrl, int slot, char* redis_ip
     return SUCCESS;
 }
 
-RET_RESULT Add_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip)
+// RET_RESULT Add_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip)
+// {
+//     char cmd[CMD_MAX_LENGHT] = {0};
+//     /*组装redis命令*/
+//     snprintf(cmd, CMD_MAX_LENGHT, "sadd sw_set_%02d_%02d %u",
+//              ctrl, slot, sw);
+//     // for(int i=0;cmd[i]!='\0';i++)
+//     //  printf("%c",cmd[i]);
+//     // printf("\n");
+
+//     /*执行redis命令*/
+//     if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
+//     {
+//         printf("add sw_set_ctrl%02d_%02d sw:%u failure\n", ctrl, slot, sw);
+//         return FAILURE;
+//     }
+//     printf("add sw_set_ctrl%02d_%02d sw:%u success\n", ctrl, slot, sw);
+//     return SUCCESS;
+// }
+
+// RET_RESULT Del_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip)
+// {
+//     char cmd[CMD_MAX_LENGHT] = {0};
+//     /*组装redis命令*/
+//     snprintf(cmd, CMD_MAX_LENGHT, "srem sw_set_%02d_%02d %u",
+//              ctrl, slot, sw);
+//     // for(int i=0;cmd[i]!='\0';i++)
+//     //  printf("%c",cmd[i]);
+//     // printf("\n");
+
+//     /*执行redis命令*/
+//     if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
+//     {
+//         printf("del sw_set_ctrl%02d_%02d sw:%u failure\n", ctrl, slot, sw);
+//         return FAILURE;
+//     }
+//     printf("del sw_set_ctrl%02d_%02d sw:%u success\n", ctrl, slot, sw);
+//     return SUCCESS;
+// }
+
+RET_RESULT Add_Conn_Ctrl(uint32_t sw, uint32_t ctrl, char* redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "sadd sw_set_%02d_%02d %u",
-             ctrl, slot, sw);
+    snprintf(cmd, CMD_MAX_LENGHT, "hset conn_ctrl %u %u", sw, ctrl);
     // for(int i=0;cmd[i]!='\0';i++)
     //  printf("%c",cmd[i]);
     // printf("\n");
@@ -124,19 +163,18 @@ RET_RESULT Add_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip)
     /*执行redis命令*/
     if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
     {
-        printf("add sw_set_ctrl%02d_%02d sw:%u failure\n", ctrl, slot, sw);
+        printf("add conn_ctrl sw:%u, ctrl:%u failure\n", sw, ctrl);
         return FAILURE;
     }
-    printf("add sw_set_ctrl%02d_%02d sw:%u success\n", ctrl, slot, sw);
+    printf("add conn_ctrl sw:%u, ctrl:%u success\n", sw, ctrl);
     return SUCCESS;
 }
 
-RET_RESULT Del_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip)
+RET_RESULT Del_Conn_Ctrl(uint32_t sw, uint32_t ctrl, char* redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "srem sw_set_%02d_%02d %u",
-             ctrl, slot, sw);
+    snprintf(cmd, CMD_MAX_LENGHT, "hset conn_ctrl %u -1", sw);
     // for(int i=0;cmd[i]!='\0';i++)
     //  printf("%c",cmd[i]);
     // printf("\n");
@@ -144,10 +182,10 @@ RET_RESULT Del_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip)
     /*执行redis命令*/
     if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
     {
-        printf("del sw_set_ctrl%02d_%02d sw:%u failure\n", ctrl, slot, sw);
+        printf("del conn_ctrl sw:%u, ctrl:%u failure\n", sw, ctrl);
         return FAILURE;
     }
-    printf("del sw_set_ctrl%02d_%02d sw:%u success\n", ctrl, slot, sw);
+    printf("del conn_ctrl sw:%u, ctrl:%u success\n", sw, ctrl);
     return SUCCESS;
 }
 
@@ -609,11 +647,13 @@ RET_RESULT Diff_Topo(int slot, int DB_ID, char* redis_ip)
         sw2 = (uint32_t)(sw & 0x00000000ffffffff);
 
         // 判断该fail_link属于本区域
-        ctrl_id = Get_Active_Ctrl((uint32_t)sw1, slot, redis_ip);
-        if(Lookup_Sw_Set((uint32_t)ctrl_id, (uint32_t)sw1, slot, redis_ip) == FAILURE)
-        {
-            ctrl_id = Get_Standby_Ctrl((uint32_t)sw1, slot, redis_ip);
-        }
+        // ctrl_id = Get_Active_Ctrl((uint32_t)sw1, slot, redis_ip);
+        // if(Lookup_Sw_Set((uint32_t)ctrl_id, (uint32_t)sw1, slot, redis_ip) == FAILURE)
+        // {
+        //     ctrl_id = Get_Standby_Ctrl((uint32_t)sw1, slot, redis_ip);
+        // }
+        ctrl_id = Get_Conn_Ctrl((uint32_t)sw1, redis_ip);
+        if(ctrl_id == -1) continue;
         db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, slot, redis_ip);
 
         if(db_id == DB_ID)
@@ -705,17 +745,17 @@ uint32_t Get_Standby_Ctrl(uint32_t sw, int slot, char* redis_ip)
     return ret;
 }
 
-RET_RESULT Lookup_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip)
+uint32_t Get_Conn_Ctrl(uint32_t sw, char* redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
+    uint32_t ret = -1;
     redisContext *context=NULL;
     redisReply *reply=NULL;
 
-    /*组装redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "sismember sw_set_%02d_%02d %u",
-             ctrl, slot, sw);
+    /*组装Redis命令*/
+    snprintf(cmd, CMD_MAX_LENGHT, "hget conn_ctrl %u", sw);
     // for(int i=0;cmd[i]!='\0';i++)
-    //  printf("%c",cmd[i]);
+    // 	printf("%c",cmd[i]);
     // printf("\n");
 
     /*连接redis*/
@@ -727,25 +767,63 @@ RET_RESULT Lookup_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip)
     {
         printf("%d execute command:%s failure\n", __LINE__, cmd);
         redisFree(context);
-        return FAILURE;
+        return ret;
     }
 
     //输出查询结果
-    if(reply->integer == 1)
+    if(reply->str == NULL)
     {
-        printf("sw:%u exists in sw_set_ctrl%02d_%02d\n", sw, ctrl, slot);
-        freeReplyObject(reply);
-        redisFree(context);
-        return SUCCESS;
+        printf("%d Get_Conn_Ctrl: failure\n", __LINE__);
+        return ret;
     }
-    else
-    {
-        printf("sw:%u don't exists in sw_set_ctrl%02d_%02d\n", sw, ctrl, slot);
-        freeReplyObject(reply);
-        redisFree(context);
-        return FAILURE;
-    }
+    printf("conn_ctrl sw:%u, ctrl:%s\n", sw, reply->str);
+    ret = atoi(reply->str);
+    freeReplyObject(reply);
+    redisFree(context);
+    return ret;
 }
+
+// RET_RESULT Lookup_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip)
+// {
+//     char cmd[CMD_MAX_LENGHT] = {0};
+//     redisContext *context=NULL;
+//     redisReply *reply=NULL;
+
+//     /*组装redis命令*/
+//     snprintf(cmd, CMD_MAX_LENGHT, "sismember sw_set_%02d_%02d %u",
+//              ctrl, slot, sw);
+//     // for(int i=0;cmd[i]!='\0';i++)
+//     //  printf("%c",cmd[i]);
+//     // printf("\n");
+
+//     /*连接redis*/
+//     redis_connect(&context, redis_ip);
+
+//     /*执行redis命令*/
+//     reply = (redisReply *)redisCommand(context, cmd);
+//     if (NULL == reply)
+//     {
+//         printf("%d execute command:%s failure\n", __LINE__, cmd);
+//         redisFree(context);
+//         return FAILURE;
+//     }
+
+//     //输出查询结果
+//     if(reply->integer == 1)
+//     {
+//         printf("sw:%u exists in sw_set_ctrl%02d_%02d\n", sw, ctrl, slot);
+//         freeReplyObject(reply);
+//         redisFree(context);
+//         return SUCCESS;
+//     }
+//     else
+//     {
+//         printf("sw:%u don't exists in sw_set_ctrl%02d_%02d\n", sw, ctrl, slot);
+//         freeReplyObject(reply);
+//         redisFree(context);
+//         return FAILURE;
+//     }
+// }
 
 uint32_t Get_Ctrl_Conn_Db(uint32_t ctrl, int slot, char* redis_ip)
 {

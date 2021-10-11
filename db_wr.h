@@ -9,7 +9,9 @@
 // 维护controller当前连接的sw集合，db代理分发路由时需要查询结果，发送给相应的控制器
 // 可采用set数据结构存储，https://blog.csdn.net/Xiejingfa/article/details/50594005
 4、交换机连接控制器后，将该交换机添加到对应控制器的控制集合中 "sadd sw_set_%02d_%02d %u", ctrl, slot, sw
+    (revised)交换机断开连接后，记录该交换机连接的对应控制器 "hset conn_ctrl %u %u", sw, ctrl
 5、交换机断开连接后，将该交换机从对应控制器的控制集合中删除 "srem sw_set_%02d_%02d %u", ctrl, slot, sw
+    (revised)交换机断开连接后，记录该交换机未连接控制器 "hset conn_ctrl %u -1", sw
 
 6、设置默认拓扑 "hset dfl_topo_%02d %lu %lu", slot, sw, delay	"sadd dfl_set_%02d %lu", slot, sw
 7、控制器确认链路连接之后，将该链路添加到真实拓扑中  "hset real_topo_%02d %lu %lu", slot, sw, delay	"sadd real_set_%02d %lu", slot, sw
@@ -66,8 +68,10 @@ typedef enum RET_RESULT
 RET_RESULT Set_Active_Ctrl(uint32_t sw, uint32_t ctrl, int slot, char* redis_ip);
 RET_RESULT Set_Standby_Ctrl(uint32_t sw, uint32_t ctrl, int slot, char* redis_ip);
 // write controller <-> switches set
-RET_RESULT Add_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip);
-RET_RESULT Del_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip);
+// RET_RESULT Add_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip);
+// RET_RESULT Del_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip);
+RET_RESULT Add_Conn_Ctrl(uint32_t sw, uint32_t ctrl, char* redis_ip);
+RET_RESULT Del_Conn_Ctrl(uint32_t sw, uint32_t ctrl, char* redis_ip);
 // write controller <-> database
 RET_RESULT Set_Ctrl_Conn_Db(uint32_t ctrl, uint32_t db, int slot, char* redis_ip);
 // write default topo
@@ -99,11 +103,12 @@ RET_RESULT Diff_Topo(int slot, int DB_ID, char* redis_ip);
 // uint32_t Get_Pc_Sw_Port(uint32_t ip);                    /*获取PC连接的交换机端口*/
 // uint64_t Get_Sw_Delay(uint16_t cid, uint8_t sid);        /*获取交换机到控制器的时延*/
 
-// read switch <-> controller(active and standby)
+// read switch <-> controller(active and standby, connected)
 uint32_t Get_Active_Ctrl(uint32_t sw, int slot, char* redis_ip);
 uint32_t Get_Standby_Ctrl(uint32_t sw, int slot, char* redis_ip);
+uint32_t Get_Conn_Ctrl(uint32_t sw, char* redis_ip);
 // lookup controller <-> switches set
-RET_RESULT Lookup_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip);
+// RET_RESULT Lookup_Sw_Set(uint32_t ctrl, uint32_t sw, int slot, char* redis_ip);
 // read controller <-> database
 uint32_t Get_Ctrl_Conn_Db(uint32_t ctrl, int slot, char* redis_ip);
 //read default topo from redis to sw_list

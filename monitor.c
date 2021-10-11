@@ -183,11 +183,13 @@ void *work_thread(void *pth_arg)
         sw2 = (uint32_t)(sw & 0x00000000ffffffff);
         printf("\tdel_link: sw%02d<->sw%02d\n", sw1, sw2);
 
-        ctrl_id = Get_Active_Ctrl((uint32_t)sw1, slot, REDIS_SERVER_IP);
-        if(Lookup_Sw_Set((uint32_t)ctrl_id, (uint32_t)sw1, slot, REDIS_SERVER_IP) == FAILURE)
-        {
-            ctrl_id = Get_Standby_Ctrl((uint32_t)sw1, slot, REDIS_SERVER_IP);
-        }
+        // ctrl_id = Get_Active_Ctrl((uint32_t)sw1, slot, REDIS_SERVER_IP);
+        // if(Lookup_Sw_Set((uint32_t)ctrl_id, (uint32_t)sw1, slot, REDIS_SERVER_IP) == FAILURE)
+        // {
+        //     ctrl_id = Get_Standby_Ctrl((uint32_t)sw1, slot, REDIS_SERVER_IP);
+        // }
+        ctrl_id = Get_Conn_Ctrl((uint32_t)sw1, REDIS_SERVER_IP);
+        if(ctrl_id == -1) continue;
         db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, slot, REDIS_SERVER_IP);
 
         // 判断起点属于本区域交换机，查询相关的非定时路由，向对应控制器发送定时通告
@@ -338,12 +340,14 @@ int route_add(char *obj, int flag)
         sw = atoi(reply->element[i]->str)/1000;
         port = atoi(reply->element[i]->str)%1000;
         // printf("sw:%u, outport:%u\n", sw, port);
-        ctrl_id = Get_Active_Ctrl((uint32_t)sw, slot, REDIS_SERVER_IP);
+        // ctrl_id = Get_Active_Ctrl((uint32_t)sw, slot, REDIS_SERVER_IP);
         // printf("ctrl_id:%u\n", ctrl_id);
-        if(Lookup_Sw_Set((uint32_t)ctrl_id, (uint32_t)sw, slot, REDIS_SERVER_IP) == FAILURE)
-        {
-            ctrl_id = Get_Standby_Ctrl((uint32_t)sw, slot, REDIS_SERVER_IP);
-        }
+        // if(Lookup_Sw_Set((uint32_t)ctrl_id, (uint32_t)sw, slot, REDIS_SERVER_IP) == FAILURE)
+        // {
+        //     ctrl_id = Get_Standby_Ctrl((uint32_t)sw, slot, REDIS_SERVER_IP);
+        // }
+        ctrl_id = Get_Conn_Ctrl((uint32_t)sw, REDIS_SERVER_IP);
+        if(ctrl_id == -1) continue;
         db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, slot, REDIS_SERVER_IP);
 
         // 判断该出端口属于本区域交换机，向对应控制器发送通告
@@ -488,11 +492,13 @@ int route_del(char *obj, int index)
         printf("\troute entry: %s\n",reply->element[i]->str);
         strncpy(ip_src_two, reply->element[i]->str+6, 2);
         sw = atol(ip_src_two)-1;
-        ctrl_id = Get_Active_Ctrl((uint32_t)sw, slot, REDIS_SERVER_IP);
-        if(Lookup_Sw_Set((uint32_t)ctrl_id, (uint32_t)sw, slot, REDIS_SERVER_IP) == FAILURE)
-        {
-            ctrl_id = Get_Standby_Ctrl((uint32_t)sw, slot, REDIS_SERVER_IP);
-        }
+        // ctrl_id = Get_Active_Ctrl((uint32_t)sw, slot, REDIS_SERVER_IP);
+        // if(Lookup_Sw_Set((uint32_t)ctrl_id, (uint32_t)sw, slot, REDIS_SERVER_IP) == FAILURE)
+        // {
+        //     ctrl_id = Get_Standby_Ctrl((uint32_t)sw, slot, REDIS_SERVER_IP);
+        // }
+        ctrl_id = Get_Conn_Ctrl((uint32_t)sw, REDIS_SERVER_IP);
+        if(ctrl_id == -1) continue;
         db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, slot, REDIS_SERVER_IP);
 
         // 判断起点属于本区域交换机，向对应控制器发送通告
