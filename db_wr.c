@@ -416,13 +416,13 @@ RET_RESULT Set_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip)
     return SUCCESS;
 }
 
-RET_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip)
+RET_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int db_id, int slot, char* redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t sw = (((uint64_t)sw1) << 32) + sw2;
     /*组装redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "del fail_link_%02d",
-             (slot-1+SLOT_NUM)%SLOT_NUM);
+    snprintf(cmd, CMD_MAX_LENGHT, "del fail_link_%02d_%02d",
+             db_id, (slot-1+SLOT_NUM)%SLOT_NUM);
     // for(int i=0;cmd[i]!='\0';i++)
     // 	printf("%c",cmd[i]);
     // printf("\n");
@@ -430,14 +430,14 @@ RET_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip)
     /*执行redis命令*/
     if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
     {
-        printf("del fail_link_%02d failure\n", (slot-1+SLOT_NUM)%SLOT_NUM);
+        printf("del fail_link_db%02d_%02d failure\n", db_id, (slot-1+SLOT_NUM)%SLOT_NUM);
         return FAILURE;
     }
-    printf("del fail_link_%02d success\n", (slot-1+SLOT_NUM)%SLOT_NUM);
+    printf("del fail_link_db%02d_%02d success\n", db_id, (slot-1+SLOT_NUM)%SLOT_NUM);
 
     /*组装redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "rpush fail_link_%02d %lu",
-             slot, sw);
+    snprintf(cmd, CMD_MAX_LENGHT, "rpush fail_link_%02d_%02d %lu",
+             db_id, slot, sw);
     // for(int i=0;cmd[i]!='\0';i++)
     // 	printf("%c",cmd[i]);
     // printf("\n");
@@ -445,10 +445,10 @@ RET_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip)
     /*执行redis命令*/
     if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
     {
-        printf("set fail_link_%02d link:sw%u<->sw%u failure\n", slot, sw1, sw2);
+        printf("set fail_link_%02d_%02d link:sw%u<->sw%u failure\n", db_id, slot, sw1, sw2);
         return FAILURE;
     }
-    printf("set fail_link_%02d link:sw%u<->sw%u success\n", slot, sw1, sw2);
+    printf("set fail_link_%02d_%02d link:sw%u<->sw%u success\n", db_id, slot, sw1, sw2);
     return SUCCESS;
 }
 
@@ -657,7 +657,7 @@ RET_RESULT Diff_Topo(int slot, int DB_ID, char* redis_ip)
         db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, slot, redis_ip);
 
         if(db_id == DB_ID)
-            Set_Fail_Link(sw1, sw2, slot, redis_ip);
+            Set_Fail_Link(sw1, sw2, DB_ID, slot, redis_ip);
     }
 
     freeReplyObject(reply);

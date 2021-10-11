@@ -16,7 +16,7 @@
 6、设置默认拓扑 "hset dfl_topo_%02d %lu %lu", slot, sw, delay	"sadd dfl_set_%02d %lu", slot, sw
 7、控制器确认链路连接之后，将该链路添加到真实拓扑中  "hset real_topo_%02d %lu %lu", slot, sw, delay	"sadd real_set_%02d %lu", slot, sw
 8、控制器确认链路断开连接之后，将该链路从真实拓扑中删除  "hdel real_topo_%02d %lu", slot, sw	"srem real_set_%02d %lu", slot, sw
-9、控制器确认链路断开连接之后，将该链路添加到失效链路列表中 "rpush fail_link_%02d %lu", slot, sw
+9、控制器确认链路断开连接之后，将该链路添加到失效链路列表中 "rpush fail_link_%02d_%02d %lu", db_id, slot, sw
 注意：何时清空失效链路列表？下一个时间片
 
 10、控制器下发新增（非定时）流表后，把路由条目加入该链路的（非定时）路由集合中 "sadd rt_set_%02d_%02d %s%s", sw1, sw2, ip_src, ip_dst
@@ -32,7 +32,7 @@
 
 17、设置下个时间片要删除的链路集合 "sadd del_link_%02d %lu", slot, sw
 18、拓扑收敛之后，校对得到失效链路，添加到失效链路列表中 
-"sdiff dfl_set_%02d real_set_%02d", slot, slot	"rpush fail_link_%02d %lu", slot, sw
+"sdiff dfl_set_%02d real_set_%02d", slot, slot	"rpush fail_link_%02d_%02d %lu", db_id, slot, sw
     
 ***************************************************************/
 
@@ -87,7 +87,7 @@ RET_RESULT Set_Cal_Fail_Route(char *ip_src, char *ip_dst, char* redis_ip);
 RET_RESULT Set_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip);
 // write links that have been disconnected
 //注意：何时清空失效链路列表？下一个时间片
-RET_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip); 
+RET_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int db_id, int slot, char* redis_ip); 
 // write link <-> routes set
 RET_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, char* redis_ip);
 RET_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, char* redis_ip);
