@@ -231,7 +231,7 @@ void *work_thread(void *pth_arg)
                 // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,timeout:3
                 // bzero(&buf, sizeof(buf));
                 memset(buf, 0, BUFSIZE);
-                snprintf(buf, BUFSIZE, "%d%03ld%s%03d%03d", ROUTE_ADD, sw, reply2->element[i]->str, 0, (SLOT_TIME - SLOT_TIME/4));
+                snprintf(buf, BUFSIZE, "%d%03ld%s%03d%03d", ROUTE_ADD, sw, reply2->element[i]->str, 0, (SLOT_TIME - SLOT_TIME/2));
                 ret = send(cfd, buf, BUFSIZE, 0);
                 if (ret == -1)
                 {
@@ -274,7 +274,7 @@ void *udpconnect(void *pth_arg)
         fail_link_index = 0;
 
         // wait converge
-        sleep(SLOT_TIME/4);
+        sleep(SLOT_TIME/2);
         //创建子线程，校对topo将失效链路加入fail_link，并根据del_link遍历路由条目调整定时
         ret = pthread_create(&pid, NULL, work_thread, NULL);
         if (ret == -1) 

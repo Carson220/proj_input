@@ -2,7 +2,7 @@
 #define __MUL_GLOBAL_H__
 
 #define SW_NUM 66
-#define SLOT_TIME 40
+#define SLOT_TIME 80
 #define SLOT_NUM 44
 
 #ifndef RETURN_RESULT
