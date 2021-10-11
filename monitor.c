@@ -174,14 +174,14 @@ void *work_thread(void *pth_arg)
     }
 
     // 输出查询结果
-    printf("\tentry num = %lu\n",reply1->elements);
+    printf("entry num = %lu\n",reply1->elements);
     if(reply1->elements == 0) return NULL;
     for(i = 0; i < reply1->elements; i++)
     {
         sw = atol(reply1->str);
         sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
         sw2 = (uint32_t)(sw & 0x00000000ffffffff);
-        printf("\tdel_link: sw%02d<->sw%02d\n", sw1, sw2);
+        printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
 
         // ctrl_id = Get_Active_Ctrl((uint32_t)sw1, slot, REDIS_SERVER_IP);
         // if(Lookup_Sw_Set((uint32_t)ctrl_id, (uint32_t)sw1, slot, REDIS_SERVER_IP) == FAILURE)
@@ -219,11 +219,11 @@ void *work_thread(void *pth_arg)
             }
 
             // 输出查询结果
-            printf("\tentry num = %lu\n",reply2->elements);
+            printf("entry num = %lu\n",reply2->elements);
             if(reply2->elements == 0) continue;
             for(i = 0; i < reply2->elements; i++)
             {
-                printf("\troute entry: %s\n",reply2->element[i]->str);
+                printf("route entry: %s\n",reply2->element[i]->str);
 
                 // 向对应控制器发送定时通告
                 cfd = fd[ctrl_id];
@@ -332,11 +332,11 @@ int route_add(char *obj, int flag)
     }
 
     // 输出查询结果
-    // printf("\tentry num = %lu\n",reply->elements);
+    // printf("entry num = %lu\n",reply->elements);
     if(reply->elements == 0) return -1;
     for(i = 0; i < reply->elements; i++)
     {
-        // printf("\tout_sw_port: %s\n",reply->element[i]->str);
+        // printf("out_sw_port: %s\n",reply->element[i]->str);
         sw = atoi(reply->element[i]->str)/1000;
         port = atoi(reply->element[i]->str)%1000;
         // printf("sw:%u, outport:%u\n", sw, port);
@@ -460,7 +460,7 @@ int route_del(char *obj, int index)
     sw = atol(reply->str);
     sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
     sw2 = (uint32_t)(sw & 0x00000000ffffffff);
-    printf("\tfail_link: sw%d<->sw%d\n",sw1, sw2);
+    printf("fail_link: sw%d<->sw%d\n",sw1, sw2);
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "smembers rt_set_%02d_%02d", sw1, sw2);
@@ -485,11 +485,11 @@ int route_del(char *obj, int index)
     }
 
     // 输出查询结果
-    printf("\tentry num = %lu\n",reply->elements);
+    printf("entry num = %lu\n",reply->elements);
     if(reply->elements == 0) return -1;
     for(i = 0; i < reply->elements; i++)
     {
-        printf("\troute entry: %s\n",reply->element[i]->str);
+        printf("route entry: %s\n",reply->element[i]->str);
         strncpy(ip_src_two, reply->element[i]->str+6, 2);
         sw = atol(ip_src_two)-1;
         // ctrl_id = Get_Active_Ctrl((uint32_t)sw, slot, REDIS_SERVER_IP);
