@@ -178,7 +178,7 @@ void *work_thread(void *pth_arg)
     if(reply1->elements == 0) return NULL;
     for(i = 0; i < reply1->elements; i++)
     {
-        sw = atol(reply1->str);
+        sw = atol(reply1->element[i]->str);
         sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
         sw2 = (uint32_t)(sw & 0x00000000ffffffff);
         printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
