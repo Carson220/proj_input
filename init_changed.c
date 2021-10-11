@@ -231,8 +231,8 @@ RET_RESULT wr_dfl_s2s(int slot_no, FILE *fp, char* redis_ip)
             fscanf(fp, "%d", &sw2);
             fgets(out_sw_port, CMD_MAX_LENGHT, fp);
             
-            snprintf(ip_src, addr_len, "C0A842%x", sw1+1); // 192.168.66.X
-            snprintf(ip_dst, addr_len, "C0A842%x", sw2+1);
+            snprintf(ip_src, addr_len, "c0a842%02x", sw1+1); // 192.168.66.X
+            snprintf(ip_dst, addr_len, "c0a842%02x", sw2+1);
 
             // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, slot_no, redis_ip);
             snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot_no, out_sw_port);
@@ -285,8 +285,8 @@ RET_RESULT wr_dfl_d2d(int slot_no, FILE *fp, char* redis_ip)
             fscanf(fp, "%d", &sw2);
             fgets(out_sw_port, CMD_MAX_LENGHT, fp);
             
-            snprintf(ip_src, addr_len, "C0A844%x", sw1+1); // 192.168.68.X
-            snprintf(ip_dst, addr_len, "C0A844%x", sw2+1);
+            snprintf(ip_src, addr_len, "c0a844%02x", sw1+1); // 192.168.68.X
+            snprintf(ip_dst, addr_len, "c0a844%02x", sw2+1);
 
             // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, slot_no, redis_ip);
             snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s",  ip_src, ip_dst, slot_no, out_sw_port);
@@ -337,8 +337,8 @@ RET_RESULT wr_dfl_c2s(int slot_no, FILE *fp, char* redis_ip)
         fscanf(fp, "%d", &sw1);
         fscanf(fp, "%d", &sw2);
         fgets(out_sw_port, CMD_MAX_LENGHT, fp);
-        snprintf(ip_src, addr_len, "C0A843%x", sw1+1); // 192.168.67.X
-        snprintf(ip_dst, addr_len, "C0A842%x", sw2+1); // 192.168.66.X
+        snprintf(ip_src, addr_len, "c0a843%02x", sw1+1); // 192.168.67.X
+        snprintf(ip_dst, addr_len, "c0a842%02x", sw2+1); // 192.168.66.X
         // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
         snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot_no, out_sw_port);
         if(context == NULL)
@@ -362,8 +362,8 @@ RET_RESULT wr_dfl_c2s(int slot_no, FILE *fp, char* redis_ip)
         fscanf(fp, "%d", &sw1);
         fscanf(fp, "%d", &sw2);
         fgets(out_sw_port, CMD_MAX_LENGHT, fp);
-        snprintf(ip_src, addr_len, "C0A842%x", sw1+1); // 192.168.66.X
-        snprintf(ip_dst, addr_len, "C0A843%x", sw2+1); // 192.168.67.X
+        snprintf(ip_src, addr_len, "c0a842%02x", sw1+1); // 192.168.66.X
+        snprintf(ip_dst, addr_len, "c0a843%02x", sw2+1); // 192.168.67.X
         // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
         snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot_no, out_sw_port);
         if(context == NULL)
@@ -411,8 +411,8 @@ RET_RESULT wr_dfl_c2d(int slot_no, FILE *fp, char* redis_ip)
         fscanf(fp, "%d", &sw1);
         fscanf(fp, "%d", &sw2);
         fgets(out_sw_port, CMD_MAX_LENGHT, fp);
-        snprintf(ip_src, addr_len, "C0A844%x", sw1+1); // 192.168.68.X
-        snprintf(ip_dst, addr_len, "C0A843%x", sw2+1); // 192.168.67.X
+        snprintf(ip_src, addr_len, "c0a844%02x", sw1+1); // 192.168.68.X
+        snprintf(ip_dst, addr_len, "c0a843%02x", sw2+1); // 192.168.67.X
         // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
         snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot_no, out_sw_port);
         if(context == NULL)
@@ -436,8 +436,8 @@ RET_RESULT wr_dfl_c2d(int slot_no, FILE *fp, char* redis_ip)
         fscanf(fp, "%d", &sw1);
         fscanf(fp, "%d", &sw2);
         fgets(out_sw_port, CMD_MAX_LENGHT, fp);
-        snprintf(ip_src, addr_len, "C0A843%x", sw1+1); // 192.168.67.X
-        snprintf(ip_dst, addr_len, "C0A844%x", sw2+1); // 192.168.68.X
+        snprintf(ip_src, addr_len, "c0a843%02x", sw1+1); // 192.168.67.X
+        snprintf(ip_dst, addr_len, "c0a844%02x", sw2+1); // 192.168.68.X
         // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
         snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot_no, out_sw_port);
         if(context == NULL)
@@ -485,7 +485,7 @@ int main(int argc,char *argv[])
 
     // read local ip
     // snprintf(redis_ip, redis_ip_len, "192.168.68.%d", nodeid+1);
-    snprintf(redis_ip, redis_ip_len, "192.168.10.105");
+    snprintf(redis_ip, redis_ip_len, "192.168.10.118");
 
     // write topo: uint32_t sw1, uint32_t sw2, uint64_t delay
     for(i = 0; i < slot_num; i++)
