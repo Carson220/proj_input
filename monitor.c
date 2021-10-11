@@ -534,6 +534,7 @@ void psubCallback(redisAsyncContext *c, void *r, void *priv)
     if (reply == NULL) return;
     char str[12] = {0,};
     snprintf(str, 12, "fail_link_%02d", DB_ID);
+    char reply_str[26] = {0,};
 
     // 订阅接收到的消息是一个带三元素的数组
     if (reply->type == REDIS_REPLY_ARRAY && reply->elements == 3) 
@@ -569,10 +570,12 @@ void psubCallback(redisAsyncContext *c, void *r, void *priv)
             else if(strstr(reply->element[3]->str, "failrt") != NULL)
             {
                 // failrt_%s%s => dflrt_%s%s_%02d
-                reply->element[3]->str[1] = 'd';
-                reply->element[3]->str[2] = 'f';
-                snprintf(reply->element[3]->str + 23, BUFSIZE, "_%02d", slot);
-                if(route_add(reply->element[3]->str + 1, CAL_FAIL) == -1)
+                reply_str[0] = 'd';
+                reply_str[1] = 'f';
+                strncpy(reply_str + 2, reply->element[3]->str + 3, 20);
+                snprintf(reply_str + 22, BUFSIZE, "_%02d", slot);
+
+                if(route_add(reply_str, CAL_FAIL) == -1)
                     printf("dfl route add failure\n");
                 else
                     printf("dfl route add success\n");
