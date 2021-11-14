@@ -59,37 +59,37 @@ int main(int argc,char *argv[])
         }
     }
 
-    // write switch <-> controller(active and standby): uint32_t sw, uint32_t ctrl
-    for(i = 0; i < slot_num; i++)
-    {
-        snprintf(fname, fname_len, "../proj_topo/active_ctrl_%d", i);
-        if((fp1=fopen(fname,"r"))==NULL)
-        {
-            printf("打开文件%s错误\n", fname);
-            return -1;
-        }
-        fscanf(fp1, "%d\n", &num);
+    // // write switch <-> controller(active and standby): uint32_t sw, uint32_t ctrl
+    // for(i = 0; i < slot_num; i++)
+    // {
+    //     snprintf(fname, fname_len, "../proj_topo/active_ctrl_%d", i);
+    //     if((fp1=fopen(fname,"r"))==NULL)
+    //     {
+    //         printf("打开文件%s错误\n", fname);
+    //         return -1;
+    //     }
+    //     fscanf(fp1, "%d\n", &num);
         
-        snprintf(fname, fname_len, "../proj_topo/standby_ctrl_%d", i);
-        if((fp2=fopen(fname,"r"))==NULL)
-        {
-            printf("打开文件%s错误\n", fname);
-            return -1;
-        }
-        fscanf(fp2, "%d\n", &num);
+    //     snprintf(fname, fname_len, "../proj_topo/standby_ctrl_%d", i);
+    //     if((fp2=fopen(fname,"r"))==NULL)
+    //     {
+    //         printf("打开文件%s错误\n", fname);
+    //         return -1;
+    //     }
+    //     fscanf(fp2, "%d\n", &num);
 
-        for(sw = 0; sw < num; sw++)
-        {
-            fscanf(fp1, "%d", &ctrl1);
-            fscanf(fp2, "%d", &ctrl2);
+    //     for(sw = 0; sw < num; sw++)
+    //     {
+    //         fscanf(fp1, "%d", &ctrl1);
+    //         fscanf(fp2, "%d", &ctrl2);
 
-            Set_Active_Ctrl(sw, ctrl1, i, redis_ip);
-            Set_Standby_Ctrl(sw, ctrl2, i, redis_ip);
-        }
+    //         Set_Active_Ctrl(sw, ctrl1, i, redis_ip);
+    //         Set_Standby_Ctrl(sw, ctrl2, i, redis_ip);
+    //     }
 
-        fclose(fp1);
-        fclose(fp2);
-    }
+    //     fclose(fp1);
+    //     fclose(fp2);
+    // }
 
     // write controller <-> database: uint32_t ctrl, uint32_t db
     for(i = 0; i < slot_num; i++)
@@ -118,30 +118,30 @@ int main(int argc,char *argv[])
     // write default routes: char *ip_src, char *ip_dst, char *out_sw_port
     for(i = 0; i < slot_num; i++)
     {
-        // s2s default routes
-        snprintf(fname, fname_len, "../proj_topo/s2s_%d", i);
-        if((fp=fopen(fname,"r"))==NULL)
-        {
-            printf("打开文件%s错误\n", fname);
-            return -1;
-        }
+        // // s2s default routes
+        // snprintf(fname, fname_len, "../proj_topo/s2s_%d", i);
+        // if((fp=fopen(fname,"r"))==NULL)
+        // {
+        //     printf("打开文件%s错误\n", fname);
+        //     return -1;
+        // }
 
-        for(j = 0; j < num; j++)
-        {
-            fscanf(fp, "%d", &sw1);
-            for(k = 1; k < num; k++)
-            {
-                fscanf(fp, "%d", &sw1);
-                fscanf(fp, "%d", &sw2);
-                fgets(out_sw_port, CMD_MAX_LENGHT, fp);
+        // for(j = 0; j < num; j++)
+        // {
+        //     fscanf(fp, "%d", &sw1);
+        //     for(k = 1; k < num; k++)
+        //     {
+        //         fscanf(fp, "%d", &sw1);
+        //         fscanf(fp, "%d", &sw2);
+        //         fgets(out_sw_port, CMD_MAX_LENGHT, fp);
                
-                snprintf(ip_src, addr_len, "c0a842%02x", sw1+1); // 192.168.66.X
-                snprintf(ip_dst, addr_len, "c0a842%02x", sw2+1);
+        //         snprintf(ip_src, addr_len, "c0a842%02x", sw1+1); // 192.168.66.X
+        //         snprintf(ip_dst, addr_len, "c0a842%02x", sw2+1);
 
-                Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
-            }
-        }
-        fclose(fp);
+        //         Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
+        //     }
+        // }
+        // fclose(fp);
 
         // d2d default routes
         snprintf(fname, fname_len, "../proj_topo/d2d_%d", i);
@@ -168,31 +168,31 @@ int main(int argc,char *argv[])
         }
         fclose(fp);
 
-        // c2s default routes
-        snprintf(fname, fname_len, "../proj_topo/c2s_%d", i);
-        if((fp=fopen(fname,"r"))==NULL)
-        {
-            printf("打开文件%s错误\n", fname);
-            return -1;
-        }
+        // // c2s default routes
+        // snprintf(fname, fname_len, "../proj_topo/c2s_%d", i);
+        // if((fp=fopen(fname,"r"))==NULL)
+        // {
+        //     printf("打开文件%s错误\n", fname);
+        //     return -1;
+        // }
 
-        while(!feof(fp))
-        {
-            fscanf(fp, "%d", &sw1);
-            fscanf(fp, "%d", &sw2);
-            fgets(out_sw_port, CMD_MAX_LENGHT, fp);
-            snprintf(ip_src, addr_len, "c0a843%02x", sw1+1); // 192.168.67.X
-            snprintf(ip_dst, addr_len, "c0a842%02x", sw2+1); // 192.168.66.X
-            Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
+        // while(!feof(fp))
+        // {
+        //     fscanf(fp, "%d", &sw1);
+        //     fscanf(fp, "%d", &sw2);
+        //     fgets(out_sw_port, CMD_MAX_LENGHT, fp);
+        //     snprintf(ip_src, addr_len, "c0a843%02x", sw1+1); // 192.168.67.X
+        //     snprintf(ip_dst, addr_len, "c0a842%02x", sw2+1); // 192.168.66.X
+        //     Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
 
-            fscanf(fp, "%d", &sw1);
-            fscanf(fp, "%d", &sw2);
-            fgets(out_sw_port, CMD_MAX_LENGHT, fp);
-            snprintf(ip_src, addr_len, "c0a842%02x", sw1+1); // 192.168.66.X
-            snprintf(ip_dst, addr_len, "c0a843%02x", sw2+1); // 192.168.67.X
-            Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
-        }
-        fclose(fp);
+        //     fscanf(fp, "%d", &sw1);
+        //     fscanf(fp, "%d", &sw2);
+        //     fgets(out_sw_port, CMD_MAX_LENGHT, fp);
+        //     snprintf(ip_src, addr_len, "c0a842%02x", sw1+1); // 192.168.66.X
+        //     snprintf(ip_dst, addr_len, "c0a843%02x", sw2+1); // 192.168.67.X
+        //     Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
+        // }
+        // fclose(fp);
 
         // c2d default routes
         snprintf(fname, fname_len, "../proj_topo/c2d_%d", i);

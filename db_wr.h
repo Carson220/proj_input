@@ -33,6 +33,11 @@
 17、设置下个时间片要删除的链路集合 "sadd del_link_%02d %lu", slot, sw
 18、拓扑收敛之后，校对得到失效链路，添加到失效链路列表中 
 "sdiff dfl_set_%02d real_set_%02d", slot, slot	"rpush fail_link_%02d_%02d %lu", db_id, slot, sw
+
+19、数据库向控制器通告流表增删操作失败，认为该控制器和本地数据库断开连接，将该通告内容写入该控制器对应的wait_exec集合中
+"sadd wait_exec_%02d %s", ctrl, buf
+20、控制器连接到新的数据库，控制器读取wait_exec列表内容或者数据库通过订阅监听并成功下发通告之后，删除相应的wait_exec元素
+"srem wait_exec_%02d %s", ctrl, buf
     
 ***************************************************************/
 
@@ -95,7 +100,9 @@ RET_RESULT Add_Rt_Set_Time(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, c
 RET_RESULT Mov_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char* redis_ip);
 // write fail_link(dfl_set - real_set)
 RET_RESULT Diff_Topo(int slot, int DB_ID, char* redis_ip);
-
+// write wait_exec
+RET_RESULT Add_Wait_Exec(uint32_t ctrl, char *buf, char* redis_ip);
+RET_RESULT Del_Wait_Exec(uint32_t ctrl, char *buf, char* redis_ip);
 
 /*读函数*/
 // uint16_t Get_Ctrl_Id(uint32_t ip);                       /*获取控制器ID*/

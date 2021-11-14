@@ -574,6 +574,38 @@ RET_RESULT Diff_Topo(int slot, int DB_ID, char* redis_ip)
     return SUCCESS;
 }
 
+RET_RESULT Add_Wait_Exec(uint32_t ctrl, char *buf, char* redis_ip)
+{
+    char cmd[CMD_MAX_LENGHT] = {0};
+    /*组装redis命令*/
+    snprintf(cmd, CMD_MAX_LENGHT, "sadd wait_exec_%02d %s", ctrl, buf);
+
+    /*执行redis命令*/
+    if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
+    {
+        printf("\tadd wait_exec_ctrl%02d buf:%s failure\n", ctrl, buf);
+        return FAILURE;
+    }
+    printf("\tadd wait_exec_ctrl%02d buf:%s success\n", ctrl, buf);
+    return SUCCESS;
+}
+
+RET_RESULT Del_Wait_Exec(uint32_t ctrl, char *buf, char* redis_ip)
+{
+    char cmd[CMD_MAX_LENGHT] = {0};
+    /*组装redis命令*/
+    snprintf(cmd, CMD_MAX_LENGHT, "srem wait_exec_%02d %s", ctrl, buf);
+
+    /*执行redis命令*/
+    if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
+    {
+        printf("\tdel wait_exec_ctrl%02d buf:%s failure\n", ctrl, buf);
+        return FAILURE;
+    }
+    printf("\tdel wait_exec_ctrl%02d buf:%s success\n", ctrl, buf);
+    return SUCCESS;
+}
+
 /****************************************************************************************************/
 
 uint32_t Get_Active_Ctrl(uint32_t sw, int slot, char* redis_ip)

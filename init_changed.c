@@ -499,25 +499,25 @@ int main(int argc,char *argv[])
         wr_topo(i, fp, redis_ip);
     }
 
-    // write switch <-> controller(active and standby): uint32_t sw, uint32_t ctrl
-    for(i = 0; i < slot_num; i++)
-    {
-        snprintf(fname, fname_len, "../proj_topo/active_ctrl_%d", i);
-        if((fp1=fopen(fname,"r"))==NULL)
-        {
-            printf("打开文件%s错误\n", fname);
-            return -1;
-        }
+    // // write switch <-> controller(active and standby): uint32_t sw, uint32_t ctrl
+    // for(i = 0; i < slot_num; i++)
+    // {
+    //     snprintf(fname, fname_len, "../proj_topo/active_ctrl_%d", i);
+    //     if((fp1=fopen(fname,"r"))==NULL)
+    //     {
+    //         printf("打开文件%s错误\n", fname);
+    //         return -1;
+    //     }
         
-        snprintf(fname, fname_len, "../proj_topo/standby_ctrl_%d", i);
-        if((fp2=fopen(fname,"r"))==NULL)
-        {
-            printf("打开文件%s错误\n", fname);
-            return -1;
-        }
+    //     snprintf(fname, fname_len, "../proj_topo/standby_ctrl_%d", i);
+    //     if((fp2=fopen(fname,"r"))==NULL)
+    //     {
+    //         printf("打开文件%s错误\n", fname);
+    //         return -1;
+    //     }
 
-        wr_sw2ctrl_active_standby(i, fp1, fp2, redis_ip);
-    }
+    //     wr_sw2ctrl_active_standby(i, fp1, fp2, redis_ip);
+    // }
 
     // write controller <-> database: uint32_t ctrl, uint32_t db
     for(i = 0; i < slot_num; i++)
@@ -535,15 +535,15 @@ int main(int argc,char *argv[])
     // write default routes: char *ip_src, char *ip_dst, char *out_sw_port
     for(i = 0; i < slot_num; i++)
     {
-        // s2s default routes
-        snprintf(fname, fname_len, "../proj_topo/s2s_%d", i);
-        if((fp=fopen(fname,"r"))==NULL)
-        {
-            printf("打开文件%s错误\n", fname);
-            return -1;
-        }
+        // // s2s default routes
+        // snprintf(fname, fname_len, "../proj_topo/s2s_%d", i);
+        // if((fp=fopen(fname,"r"))==NULL)
+        // {
+        //     printf("打开文件%s错误\n", fname);
+        //     return -1;
+        // }
 
-        wr_dfl_s2s(i, fp, redis_ip);
+        // wr_dfl_s2s(i, fp, redis_ip);
 
         // d2d default routes
         snprintf(fname, fname_len, "../proj_topo/d2d_%d", i);
@@ -555,15 +555,15 @@ int main(int argc,char *argv[])
 
         wr_dfl_d2d(i, fp, redis_ip);
 
-        // c2s default routes
-        snprintf(fname, fname_len, "../proj_topo/c2s_%d", i);
-        if((fp=fopen(fname,"r"))==NULL)
-        {
-            printf("打开文件%s错误\n", fname);
-            return -1;
-        }
+        // // c2s default routes
+        // snprintf(fname, fname_len, "../proj_topo/c2s_%d", i);
+        // if((fp=fopen(fname,"r"))==NULL)
+        // {
+        //     printf("打开文件%s错误\n", fname);
+        //     return -1;
+        // }
 
-        wr_dfl_c2s(i ,fp, redis_ip);
+        // wr_dfl_c2s(i ,fp, redis_ip);
 
         // c2d default routes
         snprintf(fname, fname_len, "../proj_topo/c2d_%d", i);
