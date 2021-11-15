@@ -260,11 +260,13 @@ RET_RESULT wr_dfl_s2s(int slot_no, FILE *fp, char* redis_ip)
     return SUCCESS;
 }
 
-RET_RESULT wr_dfl_d2d(int slot_no, FILE *fp, char* redis_ip)
+RET_RESULT wr_dfl_d2d(int slot_init, int slot_no, FILE *fp, char* redis_ip)
 {
-    int j, db, ctrl, ret, num=66, sw1, sw2, k;
+    int j, db, ctrl, ret, num=66, sw1, sw2, k, sw;
     char cmd[CMD_MAX_LENGHT] = {0};
-    char out_sw_port[CMD_MAX_LENGHT] = {0};
+    char out_sw_port[CMD_MAX_LENGHT] = {0}; // 存储出端口列表
+    char sw_port[8] = {0,}; // 存储出端口
+    int hop = 0;
     char ip_src[addr_len]  = {0};
     char ip_dst[addr_len]  = {0};
     redisContext *context = NULL;
@@ -308,6 +310,41 @@ RET_RESULT wr_dfl_d2d(int slot_no, FILE *fp, char* redis_ip)
             }
             freeReplyObject(reply);
             printf("%d execute command:%s success\n", __LINE__, cmd);
+
+            // add link-route map
+            if(slot_init == slot_no)
+            {
+                hop = 0;
+                do{
+                    strncpy(sw_port, out_sw_port+hop*7+1, 7);
+                    sw = atol(sw_port);
+                    sw1 = sw/1000;
+                    sw2 = sw%1000;
+
+                    // Add_Rt_Set(sw1, sw2, ip_src, ip_dst, redis_ip);
+                    snprintf(cmd, CMD_MAX_LENGHT, "sadd rt_set_%02d_%02d %s%s", sw1, sw2, ip_src, ip_dst);
+                    if(context == NULL)
+                    {
+                        do{
+                            context = NULL;
+                            ret = redis_connect(&context, redis_ip); 
+                            usleep(3000);
+                        }while(ret == FAILURE);
+                    }
+                    
+                    reply = (redisReply *)redisCommand(context, cmd);
+                    if (NULL == reply)
+                    {
+                        printf("%d execute command:%s failure\n", __LINE__, cmd);
+                        redisFree(context);
+                        return FAILURE;
+                    }
+                    freeReplyObject(reply);
+                    printf("%d execute command:%s success\n", __LINE__, cmd);
+
+                    hop++;
+                }while(*(out_sw_port+hop*7+1) == '0');
+            }
         }
     }
     fclose(fp);
@@ -390,11 +427,13 @@ RET_RESULT wr_dfl_c2s(int slot_no, FILE *fp, char* redis_ip)
     return SUCCESS;
 }
 
-RET_RESULT wr_dfl_c2d(int slot_no, FILE *fp, char* redis_ip)
+RET_RESULT wr_dfl_c2d(int slot_init, int slot_no, FILE *fp, char* redis_ip)
 {
-    int j, db, ctrl, ret, num=66, sw1, sw2, k;
+    int j, db, ctrl, ret, num=66, sw1, sw2, k, sw;
     char cmd[CMD_MAX_LENGHT] = {0};
-    char out_sw_port[CMD_MAX_LENGHT] = {0};
+    char out_sw_port[CMD_MAX_LENGHT] = {0}; // 存储出端口列表
+    char sw_port[8] = {0,}; // 存储出端口
+    int hop = 0;
     char ip_src[addr_len]  = {0};
     char ip_dst[addr_len]  = {0};
     redisContext *context = NULL;
@@ -433,6 +472,41 @@ RET_RESULT wr_dfl_c2d(int slot_no, FILE *fp, char* redis_ip)
         freeReplyObject(reply);
         printf("%d execute command:%s success\n", __LINE__, cmd);
 
+        // add link-route map
+        if(slot_init == slot_no)
+        {
+            hop = 0;
+            do{
+                strncpy(sw_port, out_sw_port+hop*7+1, 7);
+                sw = atol(sw_port);
+                sw1 = sw/1000;
+                sw2 = sw%1000;
+
+                // Add_Rt_Set(sw1, sw2, ip_src, ip_dst, redis_ip);
+                snprintf(cmd, CMD_MAX_LENGHT, "sadd rt_set_%02d_%02d %s%s", sw1, sw2, ip_src, ip_dst);
+                if(context == NULL)
+                {
+                    do{
+                        context = NULL;
+                        ret = redis_connect(&context, redis_ip); 
+                        usleep(3000);
+                    }while(ret == FAILURE);
+                }
+                
+                reply = (redisReply *)redisCommand(context, cmd);
+                if (NULL == reply)
+                {
+                    printf("%d execute command:%s failure\n", __LINE__, cmd);
+                    redisFree(context);
+                    return FAILURE;
+                }
+                freeReplyObject(reply);
+                printf("%d execute command:%s success\n", __LINE__, cmd);
+
+                hop++;
+            }while(*(out_sw_port+hop*7+1) == '0');
+        }
+
         fscanf(fp, "%d", &sw1);
         fscanf(fp, "%d", &sw2);
         fgets(out_sw_port, CMD_MAX_LENGHT, fp);
@@ -457,6 +531,41 @@ RET_RESULT wr_dfl_c2d(int slot_no, FILE *fp, char* redis_ip)
         }
         freeReplyObject(reply);
         printf("%d execute command:%s success\n", __LINE__, cmd);
+
+        // add link-route map
+        if(slot_init == slot_no)
+        {
+            hop = 0;
+            do{
+                strncpy(sw_port, out_sw_port+hop*7+1, 7);
+                sw = atol(sw_port);
+                sw1 = sw/1000;
+                sw2 = sw%1000;
+
+                // Add_Rt_Set(sw1, sw2, ip_src, ip_dst, redis_ip);
+                snprintf(cmd, CMD_MAX_LENGHT, "sadd rt_set_%02d_%02d %s%s", sw1, sw2, ip_src, ip_dst);
+                if(context == NULL)
+                {
+                    do{
+                        context = NULL;
+                        ret = redis_connect(&context, redis_ip); 
+                        usleep(3000);
+                    }while(ret == FAILURE);
+                }
+                
+                reply = (redisReply *)redisCommand(context, cmd);
+                if (NULL == reply)
+                {
+                    printf("%d execute command:%s failure\n", __LINE__, cmd);
+                    redisFree(context);
+                    return FAILURE;
+                }
+                freeReplyObject(reply);
+                printf("%d execute command:%s success\n", __LINE__, cmd);
+
+                hop++;
+            }while(*(out_sw_port+hop*7+1) == '0');
+        }
     }
     
     fclose(fp);
@@ -478,19 +587,21 @@ int main(int argc,char *argv[])
     char out_sw_port[CMD_MAX_LENGHT] = {0,};
     char ip_src[addr_len]  = {0,};
     char ip_dst[addr_len]  = {0,};
-    char redis_ip[redis_ip_len] = {0,};
+    // char redis_ip[redis_ip_len] = {0,};
     int nodeid = DB_ID; // 数据库所在节点序号
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t sw_tmp = 0;
+    int slot_init = atol(argv[1]);
+    char *redis_ip = argv[2];
 
     // read local ip
     // snprintf(redis_ip, redis_ip_len, "192.168.68.%d", nodeid+1);
-    snprintf(redis_ip, redis_ip_len, "192.168.10.118");
+    // snprintf(redis_ip, redis_ip_len, "192.168.10.118");
 
     // write topo: uint32_t sw1, uint32_t sw2, uint64_t delay
     for(i = 0; i < slot_num; i++)
     {
-        snprintf(fname, fname_len, "../proj_topo/test_%d", i);
+        snprintf(fname, fname_len, "../proj_topo/test/test_%d", i);
         if((fp=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
@@ -522,7 +633,7 @@ int main(int argc,char *argv[])
     // write controller <-> database: uint32_t ctrl, uint32_t db
     for(i = 0; i < slot_num; i++)
     {
-        snprintf(fname, fname_len, "../proj_topo/db_%d", i);
+        snprintf(fname, fname_len, "../proj_topo/db_conn_ctrl/db_%d", i);
         if((fp=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
@@ -546,14 +657,14 @@ int main(int argc,char *argv[])
         // wr_dfl_s2s(i, fp, redis_ip);
 
         // d2d default routes
-        snprintf(fname, fname_len, "../proj_topo/d2d_%d", i);
+        snprintf(fname, fname_len, "../proj_topo/route_d2d/d2d_%d", i);
         if((fp=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
             return -1;
         }
 
-        wr_dfl_d2d(i, fp, redis_ip);
+        wr_dfl_d2d(slot_init, i, fp, redis_ip);
 
         // // c2s default routes
         // snprintf(fname, fname_len, "../proj_topo/c2s_%d", i);
@@ -566,20 +677,20 @@ int main(int argc,char *argv[])
         // wr_dfl_c2s(i ,fp, redis_ip);
 
         // c2d default routes
-        snprintf(fname, fname_len, "../proj_topo/c2d_%d", i);
+        snprintf(fname, fname_len, "../proj_topo/route_c2d/c2d_%d", i);
         if((fp=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
             return -1;
         }
 
-        wr_dfl_c2d(i, fp, redis_ip);
+        wr_dfl_c2d(slot_init, i, fp, redis_ip);
     }
 
     // write links that next slot will be deleted: uint32_t sw1, uint32_t sw2
     for(i = 0; i < slot_num; i++)
     {
-        snprintf(fname, fname_len, "../proj_topo/del_link_%d", i);
+        snprintf(fname, fname_len, "../proj_topo/del_link_set/del_link_%d", i);
         if((fp=fopen(fname,"r"))==NULL)
         {
             printf("打开文件%s错误\n", fname);
