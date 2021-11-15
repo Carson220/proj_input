@@ -150,7 +150,7 @@ void *work_thread(void *redis_ip)
     char sw_port[8] = {0,}; // 存储出端口
 
     // 读取拓扑
-    snprintf(cmd, CMD_MAX_LENGHT, "hgetall real_topo_%02d", slot);
+    snprintf(cmd, CMD_MAX_LENGHT, "hgetall real_topo");
     redis_connect(&context, redis_ip);
     reply = (redisReply *)redisCommand(context, cmd);
     if (NULL == reply)
@@ -260,7 +260,7 @@ void *work_thread(void *redis_ip)
         printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
 
         ctrl_id = sw1;
-        db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, slot, redis_ip);
+        db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
 
         // 查询相关的非定时路由
         /*组装Redis命令*/
@@ -294,7 +294,7 @@ void *work_thread(void *redis_ip)
             strncpy(ip_src_two, reply->element[i]->str+6, 2);
             sw = atol(ip_src_two)-1;
             ctrl_id = sw;
-            db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, slot, redis_ip);
+            db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
 
             // 判断起点属于本区域交换机，删除旧的链路-路由映射，向数据库写入新路由
             // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
@@ -417,7 +417,7 @@ int route_add(char *obj, char *redis_ip)
         port = atoi(reply->element[i]->str)%1000;
         // printf("sw:%u, outport:%u\n", sw, port);
         ctrl_id = sw;
-        db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, slot, redis_ip);
+        db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
 
         // 判断该出端口属于本区域交换机，向对应控制器发送通告
         // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
@@ -471,9 +471,9 @@ int route_del(char *obj, int index, char *redis_ip)
     char ip_src_two[IP_LEN/4+1] = {0,}; // ip_src最后两位
     char ip_dst_two[IP_LEN/4+1] = {0,}; // ip_dst最后两位
 
-    char slot_str[2] = {0,};
-    strncpy(slot_str, obj+10, 2);
-    int slot = atoi(slot_str);
+    // char slot_str[2] = {0,};
+    // strncpy(slot_str, obj+10, 2);
+    // int slot = atoi(slot_str);
 
     int matrix[MAX_NUM][MAX_NUM];
     memset(matrix, 0x3f, sizeof(matrix)); // 记录拓扑
@@ -520,7 +520,7 @@ int route_del(char *obj, int index, char *redis_ip)
     printf("fail_link: sw%d<->sw%d\n",sw1, sw2); 
 
     // 读取拓扑
-    snprintf(cmd, CMD_MAX_LENGHT, "hgetall real_topo_%02d", slot);
+    snprintf(cmd, CMD_MAX_LENGHT, "hgetall real_topo");
     redis_connect(&context, redis_ip);
     reply = (redisReply *)redisCommand(context, cmd);
     if (NULL == reply)
@@ -597,7 +597,7 @@ int route_del(char *obj, int index, char *redis_ip)
         strncpy(ip_src_two, reply->element[i]->str+6, 2);
         sw = atol(ip_src_two)-1;
         ctrl_id = sw;
-        db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, slot, redis_ip);
+        db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
 
         // 判断起点属于本区域交换机，向对应控制器发送通告
         // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
@@ -717,7 +717,7 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
             {
                 strncpy(ctrl_str, reply->element[3]->str+10, 2);
                 ctrl_id = atol(ctrl_str);
-                db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, slot, redis_ip);
+                db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
 
                 // 判断起点属于本区域交换机，向对应控制器发送通告
                 // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1

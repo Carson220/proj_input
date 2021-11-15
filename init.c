@@ -96,28 +96,28 @@ int main(int argc,char *argv[])
     // }
 
     // write controller <-> database: uint32_t ctrl, uint32_t db
-    for(i = 0; i < slot_num; i++)
-    {
-        snprintf(fname, fname_len, "../proj_topo/db_conn_ctrl/db_%d", i);
-        if((fp=fopen(fname,"r"))==NULL)
-        {
-            printf("打开文件%s错误\n", fname);
-            return -1;
-        }
+    // for(i = 0; i < slot_num; i++)
+    // {
+    //     snprintf(fname, fname_len, "../proj_topo/db_conn_ctrl/db_%d", i);
+    //     if((fp=fopen(fname,"r"))==NULL)
+    //     {
+    //         printf("打开文件%s错误\n", fname);
+    //         return -1;
+    //     }
 
-        for(j = 0; j < db_num; j++)
-        {
-            fscanf(fp, "%d", &db);
-            fgetc(fp); // read '\n'
-            while(fgetc(fp) == ' ')
-            {
-                fscanf(fp, "%d", &ctrl);
-                Set_Ctrl_Conn_Db(ctrl, db, i, redis_ip);
-            }
-        }
+    //     for(j = 0; j < db_num; j++)
+    //     {
+    //         fscanf(fp, "%d", &db);
+    //         fgetc(fp); // read '\n'
+    //         while(fgetc(fp) == ' ')
+    //         {
+    //             fscanf(fp, "%d", &ctrl);
+    //             Set_Ctrl_Conn_Db(ctrl, db, i, redis_ip);
+    //         }
+    //     }
 
-        fclose(fp);
-    }
+    //     fclose(fp);
+    // }
 
     // write default routes: char *ip_src, char *ip_dst, char *out_sw_port
     for(i = 0; i < slot_num; i++)

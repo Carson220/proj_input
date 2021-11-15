@@ -61,204 +61,204 @@ RET_RESULT wr_topo(int slot_no, FILE *fp, char* redis_ip)
         printf("%d execute command:%s success\n", __LINE__, cmd);
         // Set_Topo(sw1, sw2, delay, slot_no, (char*)redis_ip);
 
-        /*组装redis命令*/
-        snprintf(cmd, CMD_MAX_LENGHT, "sadd dfl_set_%02d %lu", slot_no, sw_tmp);
-        /*执行redis命令*/
-        if(context == NULL)
-        {
-            do{
-                context = NULL;
-                ret = redis_connect(&context, redis_ip); 
-                usleep(3000);
-            }while(ret == FAILURE);
-        }
-        reply = (redisReply *)redisCommand(context, cmd);
-        if (NULL == reply)
-        {
-            printf("%d execute command:%s failure\n", __LINE__, cmd);
-            redisFree(context);
-            return FAILURE;
-        }
-        freeReplyObject(reply);
-        printf("%d execute command:%s success\n", __LINE__, cmd);
+        // /*组装redis命令*/
+        // snprintf(cmd, CMD_MAX_LENGHT, "sadd dfl_set_%02d %lu", slot_no, sw_tmp);
+        // /*执行redis命令*/
+        // if(context == NULL)
+        // {
+        //     do{
+        //         context = NULL;
+        //         ret = redis_connect(&context, redis_ip); 
+        //         usleep(3000);
+        //     }while(ret == FAILURE);
+        // }
+        // reply = (redisReply *)redisCommand(context, cmd);
+        // if (NULL == reply)
+        // {
+        //     printf("%d execute command:%s failure\n", __LINE__, cmd);
+        //     redisFree(context);
+        //     return FAILURE;
+        // }
+        // freeReplyObject(reply);
+        // printf("%d execute command:%s success\n", __LINE__, cmd);
     }
     fclose(fp);
     redisFree(context);
     return SUCCESS;
 }
 
-RET_RESULT wr_sw2ctrl_active_standby(int slot_no, FILE *fp1, FILE *fp2, char* redis_ip)
-{
-    int num = 0, ret;
-    uint32_t sw, ctrl1, ctrl2;
-    redisContext *context = NULL;
-    redisReply *reply = NULL;
-    char cmd[CMD_MAX_LENGHT] = {0};
-    uint64_t sw_tmp;
+// RET_RESULT wr_sw2ctrl_active_standby(int slot_no, FILE *fp1, FILE *fp2, char* redis_ip)
+// {
+//     int num = 0, ret;
+//     uint32_t sw, ctrl1, ctrl2;
+//     redisContext *context = NULL;
+//     redisReply *reply = NULL;
+//     char cmd[CMD_MAX_LENGHT] = {0};
+//     uint64_t sw_tmp;
 
-    while(ret == FAILURE)
-    {
-        context = NULL;
-        ret = redis_connect(&context, redis_ip); 
-        usleep(3000);
-    }
-    fscanf(fp1, "%d\n", &num);
-    fscanf(fp2, "%d\n", &num);
+//     while(ret == FAILURE)
+//     {
+//         context = NULL;
+//         ret = redis_connect(&context, redis_ip); 
+//         usleep(3000);
+//     }
+//     fscanf(fp1, "%d\n", &num);
+//     fscanf(fp2, "%d\n", &num);
 
-    for(sw = 0; sw < num; sw++)
-    {
-        fscanf(fp1, "%d", &ctrl1);
-        fscanf(fp2, "%d", &ctrl2);
+//     for(sw = 0; sw < num; sw++)
+//     {
+//         fscanf(fp1, "%d", &ctrl1);
+//         fscanf(fp2, "%d", &ctrl2);
 
-        // Set_Active_Ctrl(sw, ctrl1, slot_no, redis_ip);
-        snprintf(cmd, CMD_MAX_LENGHT, "hset active_ctrl_%02d %u %u", slot_no, sw, ctrl1);
-        /*执行redis命令*/
-        if(context == NULL)
-        {
-            do{
-                context = NULL;
-                ret = redis_connect(&context, redis_ip); 
-                usleep(3000);
-            }while(ret == FAILURE);
-        }
-        reply = (redisReply *)redisCommand(context, cmd);
-        if (NULL == reply)
-        {
-            printf("%d execute command:%s failure\n", __LINE__, cmd);
-            redisFree(context);
-            return FAILURE;
-        }
-        freeReplyObject(reply);
-        printf("%d execute command:%s success\n", __LINE__, cmd);
+//         // Set_Active_Ctrl(sw, ctrl1, slot_no, redis_ip);
+//         snprintf(cmd, CMD_MAX_LENGHT, "hset active_ctrl_%02d %u %u", slot_no, sw, ctrl1);
+//         /*执行redis命令*/
+//         if(context == NULL)
+//         {
+//             do{
+//                 context = NULL;
+//                 ret = redis_connect(&context, redis_ip); 
+//                 usleep(3000);
+//             }while(ret == FAILURE);
+//         }
+//         reply = (redisReply *)redisCommand(context, cmd);
+//         if (NULL == reply)
+//         {
+//             printf("%d execute command:%s failure\n", __LINE__, cmd);
+//             redisFree(context);
+//             return FAILURE;
+//         }
+//         freeReplyObject(reply);
+//         printf("%d execute command:%s success\n", __LINE__, cmd);
 
-        // Set_Standby_Ctrl(sw, ctrl2, slot_no, redis_ip);
-        snprintf(cmd, CMD_MAX_LENGHT, "hset standby_ctrl_%02d %u %u", slot_no, sw, ctrl2);
-        /*执行redis命令*/
-        if(context == NULL)
-        {
-            do{
-                context = NULL;
-                ret = redis_connect(&context, redis_ip); 
-                usleep(3000);
-            }while(ret == FAILURE);
-        }
-        reply = (redisReply *)redisCommand(context, cmd);
-        if (NULL == reply)
-        {
-            printf("%d execute command:%s failure\n", __LINE__, cmd);
-            redisFree(context);
-            return FAILURE;
-        }
-        freeReplyObject(reply);
-        printf("%d execute command:%s success\n", __LINE__, cmd);
-    }
+//         // Set_Standby_Ctrl(sw, ctrl2, slot_no, redis_ip);
+//         snprintf(cmd, CMD_MAX_LENGHT, "hset standby_ctrl_%02d %u %u", slot_no, sw, ctrl2);
+//         /*执行redis命令*/
+//         if(context == NULL)
+//         {
+//             do{
+//                 context = NULL;
+//                 ret = redis_connect(&context, redis_ip); 
+//                 usleep(3000);
+//             }while(ret == FAILURE);
+//         }
+//         reply = (redisReply *)redisCommand(context, cmd);
+//         if (NULL == reply)
+//         {
+//             printf("%d execute command:%s failure\n", __LINE__, cmd);
+//             redisFree(context);
+//             return FAILURE;
+//         }
+//         freeReplyObject(reply);
+//         printf("%d execute command:%s success\n", __LINE__, cmd);
+//     }
 
-    fclose(fp1);
-    fclose(fp2);
-    redisFree(context);
-    return SUCCESS;
-}
+//     fclose(fp1);
+//     fclose(fp2);
+//     redisFree(context);
+//     return SUCCESS;
+// }
 
-RET_RESULT wr_Ctrl_Conn_Db(int slot_no, FILE *fp, char* redis_ip)
-{
-    int j, db, ctrl, ret;
-    char cmd[CMD_MAX_LENGHT] = {0};
-    redisContext *context = NULL;
-    redisReply *reply = NULL;
+// RET_RESULT wr_Ctrl_Conn_Db(int slot_no, FILE *fp, char* redis_ip)
+// {
+//     int j, db, ctrl, ret;
+//     char cmd[CMD_MAX_LENGHT] = {0};
+//     redisContext *context = NULL;
+//     redisReply *reply = NULL;
 
-    while(ret == FAILURE)
-    {
-        context = NULL;
-        ret = redis_connect(&context, redis_ip); 
-        usleep(3000);
-    }
-    for(j = 0; j < db_num; j++)
-    {
-        fscanf(fp, "%d", &db);
-        fgetc(fp); // read '\n'
-        while(fgetc(fp) == ' ')
-        {
-            fscanf(fp, "%d", &ctrl);
-            // Set_Active_Ctrl(ctrl, db, slot_no, redis_ip);
-            snprintf(cmd, CMD_MAX_LENGHT, "hset db_%02d %u %u", slot_no, ctrl, db);
-            if(context == NULL)
-            {
-                do{
-                    context = NULL;
-                    ret = redis_connect(&context, redis_ip); 
-                    usleep(3000);
-                }while(ret == FAILURE);
-            }
-            reply = (redisReply *)redisCommand(context, cmd);
-            if (NULL == reply)
-            {
-                printf("%d execute command:%s failure\n", __LINE__, cmd);
-                redisFree(context);
-                return FAILURE;
-            }
-            freeReplyObject(reply);
-            printf("%d execute command:%s success\n", __LINE__, cmd);
-        }
-    }
+//     while(ret == FAILURE)
+//     {
+//         context = NULL;
+//         ret = redis_connect(&context, redis_ip); 
+//         usleep(3000);
+//     }
+//     for(j = 0; j < db_num; j++)
+//     {
+//         fscanf(fp, "%d", &db);
+//         fgetc(fp); // read '\n'
+//         while(fgetc(fp) == ' ')
+//         {
+//             fscanf(fp, "%d", &ctrl);
+//             // Set_Active_Ctrl(ctrl, db, slot_no, redis_ip);
+//             snprintf(cmd, CMD_MAX_LENGHT, "hset db_%02d %u %u", slot_no, ctrl, db);
+//             if(context == NULL)
+//             {
+//                 do{
+//                     context = NULL;
+//                     ret = redis_connect(&context, redis_ip); 
+//                     usleep(3000);
+//                 }while(ret == FAILURE);
+//             }
+//             reply = (redisReply *)redisCommand(context, cmd);
+//             if (NULL == reply)
+//             {
+//                 printf("%d execute command:%s failure\n", __LINE__, cmd);
+//                 redisFree(context);
+//                 return FAILURE;
+//             }
+//             freeReplyObject(reply);
+//             printf("%d execute command:%s success\n", __LINE__, cmd);
+//         }
+//     }
 
-    fclose(fp);
-    redisFree(context);
-    return SUCCESS;
-}
+//     fclose(fp);
+//     redisFree(context);
+//     return SUCCESS;
+// }
 
-RET_RESULT wr_dfl_s2s(int slot_no, FILE *fp, char* redis_ip)
-{
-    int j, db, ctrl, ret, num=66, sw1, sw2, k;
-    char cmd[CMD_MAX_LENGHT] = {0};
-    char out_sw_port[CMD_MAX_LENGHT] = {0};
-    char ip_src[addr_len]  = {0};
-    char ip_dst[addr_len]  = {0};
-    redisContext *context = NULL;
-    redisReply *reply = NULL;
+// RET_RESULT wr_dfl_s2s(int slot_no, FILE *fp, char* redis_ip)
+// {
+//     int j, db, ctrl, ret, num=66, sw1, sw2, k;
+//     char cmd[CMD_MAX_LENGHT] = {0};
+//     char out_sw_port[CMD_MAX_LENGHT] = {0};
+//     char ip_src[addr_len]  = {0};
+//     char ip_dst[addr_len]  = {0};
+//     redisContext *context = NULL;
+//     redisReply *reply = NULL;
 
-    while(ret == FAILURE)
-    {
-        context = NULL;
-        ret = redis_connect(&context, redis_ip); 
-        usleep(3000);
-    }
-    for(j = 0; j < num; j++)
-    {
-        fscanf(fp, "%d", &sw1);
-        for(k = 1; k < num; k++)
-        {
-            fscanf(fp, "%d", &sw1);
-            fscanf(fp, "%d", &sw2);
-            fgets(out_sw_port, CMD_MAX_LENGHT, fp);
+//     while(ret == FAILURE)
+//     {
+//         context = NULL;
+//         ret = redis_connect(&context, redis_ip); 
+//         usleep(3000);
+//     }
+//     for(j = 0; j < num; j++)
+//     {
+//         fscanf(fp, "%d", &sw1);
+//         for(k = 1; k < num; k++)
+//         {
+//             fscanf(fp, "%d", &sw1);
+//             fscanf(fp, "%d", &sw2);
+//             fgets(out_sw_port, CMD_MAX_LENGHT, fp);
             
-            snprintf(ip_src, addr_len, "c0a842%02x", sw1+1); // 192.168.66.X
-            snprintf(ip_dst, addr_len, "c0a842%02x", sw2+1);
+//             snprintf(ip_src, addr_len, "c0a842%02x", sw1+1); // 192.168.66.X
+//             snprintf(ip_dst, addr_len, "c0a842%02x", sw2+1);
 
-            // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, slot_no, redis_ip);
-            snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot_no, out_sw_port);
-            if(context == NULL)
-            {
-                do{
-                    context = NULL;
-                    ret = redis_connect(&context, redis_ip); 
-                    usleep(3000);
-                }while(ret == FAILURE);
-            }
-            reply = (redisReply *)redisCommand(context, cmd);
-            if (NULL == reply)
-            {
-                printf("%d execute command:%s failure\n", __LINE__, cmd);
-                redisFree(context);
-                return FAILURE;
-            }
-            freeReplyObject(reply);
-            printf("%d execute command:%s success\n", __LINE__, cmd);
-        }
-    }
-    fclose(fp);
-    redisFree(context);
-    return SUCCESS;
-}
+//             // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, slot_no, redis_ip);
+//             snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot_no, out_sw_port);
+//             if(context == NULL)
+//             {
+//                 do{
+//                     context = NULL;
+//                     ret = redis_connect(&context, redis_ip); 
+//                     usleep(3000);
+//                 }while(ret == FAILURE);
+//             }
+//             reply = (redisReply *)redisCommand(context, cmd);
+//             if (NULL == reply)
+//             {
+//                 printf("%d execute command:%s failure\n", __LINE__, cmd);
+//                 redisFree(context);
+//                 return FAILURE;
+//             }
+//             freeReplyObject(reply);
+//             printf("%d execute command:%s success\n", __LINE__, cmd);
+//         }
+//     }
+//     fclose(fp);
+//     redisFree(context);
+//     return SUCCESS;
+// }
 
 RET_RESULT wr_dfl_d2d(int slot_init, int slot_no, FILE *fp, char* redis_ip)
 {
@@ -353,79 +353,79 @@ RET_RESULT wr_dfl_d2d(int slot_init, int slot_no, FILE *fp, char* redis_ip)
 }
 
 
-RET_RESULT wr_dfl_c2s(int slot_no, FILE *fp, char* redis_ip)
-{
-    int j, db, ctrl, ret, num=66, sw1, sw2, k;
-    char cmd[CMD_MAX_LENGHT] = {0};
-    char out_sw_port[CMD_MAX_LENGHT] = {0};
-    char ip_src[addr_len]  = {0};
-    char ip_dst[addr_len]  = {0};
-    redisContext *context = NULL;
-    redisReply *reply = NULL;
+// RET_RESULT wr_dfl_c2s(int slot_no, FILE *fp, char* redis_ip)
+// {
+//     int j, db, ctrl, ret, num=66, sw1, sw2, k;
+//     char cmd[CMD_MAX_LENGHT] = {0};
+//     char out_sw_port[CMD_MAX_LENGHT] = {0};
+//     char ip_src[addr_len]  = {0};
+//     char ip_dst[addr_len]  = {0};
+//     redisContext *context = NULL;
+//     redisReply *reply = NULL;
 
-    while(ret == FAILURE)
-    {
-        context = NULL;
-        ret = redis_connect(&context, redis_ip); 
-        usleep(3000);
-    }
-    while(!feof(fp))
-    {
-        fscanf(fp, "%d", &sw1);
-        fscanf(fp, "%d", &sw2);
-        fgets(out_sw_port, CMD_MAX_LENGHT, fp);
-        snprintf(ip_src, addr_len, "c0a843%02x", sw1+1); // 192.168.67.X
-        snprintf(ip_dst, addr_len, "c0a842%02x", sw2+1); // 192.168.66.X
-        // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
-        snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot_no, out_sw_port);
-        if(context == NULL)
-        {
-            do{
-                context = NULL;
-                ret = redis_connect(&context, redis_ip); 
-                usleep(3000);
-            }while(ret == FAILURE);
-        }
-        reply = (redisReply *)redisCommand(context, cmd);
-        if (NULL == reply)
-        {
-            printf("%d execute command:%s failure\n", __LINE__, cmd);
-            redisFree(context);
-            return FAILURE;
-        }
-        freeReplyObject(reply);
-        printf("%d execute command:%s success\n", __LINE__, cmd);
+//     while(ret == FAILURE)
+//     {
+//         context = NULL;
+//         ret = redis_connect(&context, redis_ip); 
+//         usleep(3000);
+//     }
+//     while(!feof(fp))
+//     {
+//         fscanf(fp, "%d", &sw1);
+//         fscanf(fp, "%d", &sw2);
+//         fgets(out_sw_port, CMD_MAX_LENGHT, fp);
+//         snprintf(ip_src, addr_len, "c0a843%02x", sw1+1); // 192.168.67.X
+//         snprintf(ip_dst, addr_len, "c0a842%02x", sw2+1); // 192.168.66.X
+//         // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
+//         snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot_no, out_sw_port);
+//         if(context == NULL)
+//         {
+//             do{
+//                 context = NULL;
+//                 ret = redis_connect(&context, redis_ip); 
+//                 usleep(3000);
+//             }while(ret == FAILURE);
+//         }
+//         reply = (redisReply *)redisCommand(context, cmd);
+//         if (NULL == reply)
+//         {
+//             printf("%d execute command:%s failure\n", __LINE__, cmd);
+//             redisFree(context);
+//             return FAILURE;
+//         }
+//         freeReplyObject(reply);
+//         printf("%d execute command:%s success\n", __LINE__, cmd);
 
-        fscanf(fp, "%d", &sw1);
-        fscanf(fp, "%d", &sw2);
-        fgets(out_sw_port, CMD_MAX_LENGHT, fp);
-        snprintf(ip_src, addr_len, "c0a842%02x", sw1+1); // 192.168.66.X
-        snprintf(ip_dst, addr_len, "c0a843%02x", sw2+1); // 192.168.67.X
-        // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
-        snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot_no, out_sw_port);
-        if(context == NULL)
-        {
-            do{
-                context = NULL;
-                ret = redis_connect(&context, redis_ip); 
-                usleep(3000);
-            }while(ret == FAILURE);
-        }
-        reply = (redisReply *)redisCommand(context, cmd);
-        if (NULL == reply)
-        {
-            printf("%d execute command:%s failure\n", __LINE__, cmd);
-            redisFree(context);
-            return FAILURE;
-        }
-        freeReplyObject(reply);
-        printf("%d execute command:%s success\n", __LINE__, cmd);
-    }
+//         fscanf(fp, "%d", &sw1);
+//         fscanf(fp, "%d", &sw2);
+//         fgets(out_sw_port, CMD_MAX_LENGHT, fp);
+//         snprintf(ip_src, addr_len, "c0a842%02x", sw1+1); // 192.168.66.X
+//         snprintf(ip_dst, addr_len, "c0a843%02x", sw2+1); // 192.168.67.X
+//         // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
+//         snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot_no, out_sw_port);
+//         if(context == NULL)
+//         {
+//             do{
+//                 context = NULL;
+//                 ret = redis_connect(&context, redis_ip); 
+//                 usleep(3000);
+//             }while(ret == FAILURE);
+//         }
+//         reply = (redisReply *)redisCommand(context, cmd);
+//         if (NULL == reply)
+//         {
+//             printf("%d execute command:%s failure\n", __LINE__, cmd);
+//             redisFree(context);
+//             return FAILURE;
+//         }
+//         freeReplyObject(reply);
+//         printf("%d execute command:%s success\n", __LINE__, cmd);
+//     }
     
-    fclose(fp);
-    redisFree(context);
-    return SUCCESS;
-}
+//     fclose(fp);
+//     redisFree(context);
+//     return SUCCESS;
+// }
 
 RET_RESULT wr_dfl_c2d(int slot_init, int slot_no, FILE *fp, char* redis_ip)
 {
@@ -631,17 +631,17 @@ int main(int argc,char *argv[])
     // }
 
     // write controller <-> database: uint32_t ctrl, uint32_t db
-    for(i = 0; i < slot_num; i++)
-    {
-        snprintf(fname, fname_len, "../proj_topo/db_conn_ctrl/db_%d", i);
-        if((fp=fopen(fname,"r"))==NULL)
-        {
-            printf("打开文件%s错误\n", fname);
-            return -1;
-        }
+    // for(i = 0; i < slot_num; i++)
+    // {
+    //     snprintf(fname, fname_len, "../proj_topo/db_conn_ctrl/db_%d", i);
+    //     if((fp=fopen(fname,"r"))==NULL)
+    //     {
+    //         printf("打开文件%s错误\n", fname);
+    //         return -1;
+    //     }
 
-        wr_Ctrl_Conn_Db(i, fp, redis_ip);
-    }
+    //     wr_Ctrl_Conn_Db(i, fp, redis_ip);
+    // }
 
     // write default routes: char *ip_src, char *ip_dst, char *out_sw_port
     for(i = 0; i < slot_num; i++)
