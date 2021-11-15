@@ -528,8 +528,8 @@ void psubCallback(redisAsyncContext *c, void *r, void *priv)
     int i = 0;
     redisReply *reply = (redisReply*)r;
     if (reply == NULL) return;
-    char str[12] = {0,};
-    snprintf(str, 12, "fail_link_%02d", DB_ID);
+    char str[13] = {0,};
+    snprintf(str, 13, "fail_link_%02d", DB_ID);
     char reply_str[26] = {0,};
 
     // 订阅接收到的消息是一个带三元素的数组

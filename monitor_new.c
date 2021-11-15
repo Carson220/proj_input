@@ -105,7 +105,17 @@ void *tcpconnect(void *pth_arg)
 	}
 }
 
-void *work_thread(char *redis_ip)
+// 用于输出路径，并写入文件
+void out(int node1, int node2, int *route, int *nextsw, int *hop)
+{
+    if(*(route + node1*MAX_NUM + node2) == -1)
+        return;
+    out(node1, *(route + node1*MAX_NUM + node2), route, nextsw, hop);
+    nextsw[(*hop)++] = *(route + node1*MAX_NUM + node2);
+    out(*(route + node1*MAX_NUM + node2), node2, route, nextsw, hop);
+}
+
+void *work_thread(void *redis_ip)
 {
     // 校对topo将失效链路加入fail_link
     // Diff_Topo(slot, DB_ID, redis_ip);
@@ -147,7 +157,7 @@ void *work_thread(char *redis_ip)
     {
         printf("\t%d execute command:%s failure\n", __LINE__, cmd);
         redisFree(context);
-        return FAILURE;
+        return NULL;
     }
     for(i = 0; i < reply->elements; i++)
     {
@@ -302,7 +312,7 @@ void *work_thread(char *redis_ip)
                 {
                     hop = 0;
                     nextsw[hop++] = sw1;
-                    out(sw1, sw2, route, nextsw, &hop);
+                    out(sw1, sw2, &route[0][0], nextsw, &hop);
                     nextsw[hop] = sw2;
 
                     for(j = 0; j < hop; j++)
@@ -323,7 +333,7 @@ void *work_thread(char *redis_ip)
     return NULL;
 }
 
-void *udpconnect(void *pth_arg)
+void *udpconnect(void *redis_ip)
 {
     uint8_t buf[BUFSIZE] = {'\0'};
     struct sockaddr_in *clent_addr;
@@ -346,7 +356,7 @@ void *udpconnect(void *pth_arg)
         // wait converge
         sleep(SLOT_TIME/2);
         //创建子线程，根据del_link遍历路由条目进行修改
-        ret = pthread_create(&pid, NULL, work_thread, NULL);
+        ret = pthread_create(&pid, NULL, work_thread, redis_ip);
         if (ret == -1) 
         {
             print_err("create work_thread failed", __LINE__, errno); 
@@ -439,16 +449,6 @@ int route_add(char *obj, char *redis_ip)
     freeReplyObject(reply);
     redisFree(context);
     return 0;
-}
-
-// 用于输出路径，并写入文件
-void out(int node1, int node2, int **route, int *nextsw, int *hop)
-{
-    if(route[node1][node2] == -1)
-        return;
-    out(node1, route[node1][node2], route, nextsw, hop);
-    nextsw[(*hop)++] = route[node1][node2];
-    out(route[node1][node2], node2, route, nextsw, hop);
 }
 
 // 遍历传入的失效链路，将失效链路上的全部路由都调整为可行的新路由，向相应的控制器发送 删除/新增 流表项通告
@@ -629,7 +629,7 @@ int route_del(char *obj, int index, char *redis_ip)
             {
                 hop = 0;
                 nextsw[hop++] = sw1;
-                out(sw1, sw2, route, nextsw, &hop);
+                out(sw1, sw2, &route[0][0], nextsw, &hop);
                 nextsw[hop] = sw2;
 
                 for(j = 0; j < hop; j++)
@@ -648,14 +648,14 @@ int route_del(char *obj, int index, char *redis_ip)
 }
 
 // 订阅回调函数
-void psubCallback(redisAsyncContext *c, void *r, void *priv, char *redis_ip) 
+void psubCallback(redisAsyncContext *c, void *r, void *redis_ip) 
 {
     int i = 0;
     redisReply *reply = (redisReply*)r;
     if (reply == NULL) return;
-    char str[12] = {0,};
+    char str[13] = {0,};
     // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
-    snprintf(str, 12, "fail_link_%02d", (((inet_addr(redis_ip))&0xff000000)>>24) - 1);
+    snprintf(str, 13, "fail_link_%02d", (((inet_addr(redis_ip))&0xff000000)>>24) - 1);
     char reply_str[26] = {0,};
 
     int ctrl_id = 0;  // 记录控制器ID
@@ -674,7 +674,7 @@ void psubCallback(redisAsyncContext *c, void *r, void *priv, char *redis_ip)
         if (strcmp( reply->element[0]->str, "psubscribe") == 0) 
         {
             printf( "Received[%s] channel %s: %s\n",
-                    (char*)priv,
+                    "psub",
                     reply->element[1]->str,
                     reply->element[2]->str );
         }
@@ -732,7 +732,7 @@ void psubCallback(redisAsyncContext *c, void *r, void *priv, char *redis_ip)
                     {
                         printf("Error: %s\n", context1->errstr);
                         redisFree(context1);
-                        return -1;
+                        return;
                     }
                     printf("connect redis server success\n");
                     reply1 = (redisReply *)redisCommand(context1, cmd);
@@ -740,12 +740,12 @@ void psubCallback(redisAsyncContext *c, void *r, void *priv, char *redis_ip)
                     {
                         printf("execute command:%s failure\n", cmd);
                         redisFree(context1);
-                        return -1;
+                        return;
                     }
 
                     // 输出查询结果
                     printf("entry num = %lu\n",reply1->elements);
-                    if(reply1->elements == 0) return -1;
+                    if(reply1->elements == 0) return;
                     for(i = 0; i < reply1->elements; i++)
                     {
                         printf("ctrl_%d buf_%d: %s\n", ctrl_id, i, reply->element[i]->str);
@@ -793,9 +793,11 @@ void disconnectCallback(const redisAsyncContext *c, int status)
     printf("Disconnected...\n");
 }
 
-int main(char *redis_ip) 
+int main(int argc, char **argv) 
 {
     long skfd = -1, ret = -1;
+    char *redis_ip = *++argv;
+    printf("redis_ip: %s\n", redis_ip);
     
 	skfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (skfd == -1) 
@@ -828,7 +830,7 @@ int main(char *redis_ip)
         print_err("create tcpconnect failed", __LINE__, errno); 
     }
     //创建子线程，获取时间片序号slot
-    ret = pthread_create(&udpid, NULL, udpconnect, NULL);
+    ret = pthread_create(&udpid, NULL, udpconnect, redis_ip);
     if (ret == -1) 
     {
         print_err("create udpconnect failed", __LINE__, errno); 
@@ -849,7 +851,7 @@ int main(char *redis_ip)
 
     redisAsyncSetConnectCallback(c,connectCallback); // 设置连接回调，当异步调用连接后，服务器处理连接请求结束后调用，通知调用者连接的状态
     redisAsyncSetDisconnectCallback(c,disconnectCallback); // 设置断开连接回调，当服务器断开连接后，通知调用者连接断开，调用者可以利用这个函数实现重连
-    redisAsyncCommand(c, psubCallback, (char*) "psub", "psubscribe __key*__:*", redis_ip);
+    redisAsyncCommand(c, psubCallback, redis_ip, "psubscribe __key*__:*");
 
     // 开启事件分发，event_base_dispatch会阻塞
     event_base_dispatch(base); // 运行event_base，直到没有event被注册在event_base中为止
