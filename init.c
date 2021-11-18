@@ -31,8 +31,8 @@ int main(int argc,char *argv[])
     char ip_dst[addr_len]  = {0,};
     // char redis_ip[redis_ip_len] = {0,};
     int nodeid = DB_ID; // 数据库所在节点序号
-    int slot = atol(argv[1]);
-    char *redis_ip = argv[2];
+    // int slot = atol(argv[1]);
+    char *redis_ip = argv[1];
 
     // read local ip
     // snprintf(redis_ip, redis_ip_len, "192.168.68.%d", nodeid+1);
@@ -163,24 +163,25 @@ int main(int argc,char *argv[])
                 fscanf(fp, "%d", &sw1);
                 fscanf(fp, "%d", &sw2);
                 fgets(out_sw_port, CMD_MAX_LENGHT, fp);
+                out_sw_port[strlen(out_sw_port)-1]='\0';
                
                 snprintf(ip_src, addr_len, "c0a844%02x", sw1+1); // 192.168.68.X
                 snprintf(ip_dst, addr_len, "c0a844%02x", sw2+1);
 
                 Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
                 // add link-route map
-                if(i == slot)
-                {
-                    hop = 0;
-                    do{
-                        strncpy(sw_port, out_sw_port+hop*7+1, 7);
-                        sw = atol(sw_port);
-                        sw1 = sw/1000;
-                        sw2 = sw%1000;
-                        Add_Rt_Set(sw1, sw2, ip_src, ip_dst, redis_ip);
-                        hop++;
-                    }while(*(out_sw_port+hop*7+1) == '0');
-                }
+                // if(i == slot)
+                // {
+                //     hop = 0;
+                //     do{
+                //         strncpy(sw_port, out_sw_port+hop*7+1, 7);
+                //         sw = atol(sw_port);
+                //         sw1 = sw/1000;
+                //         sw2 = sw%1000;
+                //         Add_Rt_Set(sw1, sw2, ip_src, ip_dst, redis_ip);
+                //         hop++;
+                //     }while(*(out_sw_port+hop*7+1) == '0');
+                // }
             }
         }
         fclose(fp);
@@ -224,42 +225,46 @@ int main(int argc,char *argv[])
             fscanf(fp, "%d", &sw1);
             fscanf(fp, "%d", &sw2);
             fgets(out_sw_port, CMD_MAX_LENGHT, fp);
+            out_sw_port[strlen(out_sw_port)-1]='\0';
+
             snprintf(ip_src, addr_len, "c0a844%02x", sw1+1); // 192.168.68.X
             snprintf(ip_dst, addr_len, "c0a843%02x", sw2+1); // 192.168.67.X
             Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
             // add link-route map
-            if(i == slot)
-            {
-                hop = 0;
-                do{
-                    strncpy(sw_port, out_sw_port+hop*7+1, 7);
-                    sw = atol(sw_port);
-                    sw1 = sw/1000;
-                    sw2 = sw%1000;
-                    Add_Rt_Set(sw1, sw2, ip_src, ip_dst, redis_ip);
-                    hop++;
-                }while(*(out_sw_port+hop*7+1) == '0');
-            }
+            // if(i == slot)
+            // {
+            //     hop = 0;
+            //     do{
+            //         strncpy(sw_port, out_sw_port+hop*7+1, 7);
+            //         sw = atol(sw_port);
+            //         sw1 = sw/1000;
+            //         sw2 = sw%1000;
+            //         Add_Rt_Set(sw1, sw2, ip_src, ip_dst, redis_ip);
+            //         hop++;
+            //     }while(*(out_sw_port+hop*7+1) == '0');
+            // }
 
             fscanf(fp, "%d", &sw1);
             fscanf(fp, "%d", &sw2);
             fgets(out_sw_port, CMD_MAX_LENGHT, fp);
+            out_sw_port[strlen(out_sw_port)-1]='\0';
+            
             snprintf(ip_src, addr_len, "c0a843%02x", sw1+1); // 192.168.67.X
             snprintf(ip_dst, addr_len, "c0a844%02x", sw2+1); // 192.168.68.X
             Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
             // add link-route map
-            if(i == slot)
-            {
-                hop = 0;
-                do{
-                    strncpy(sw_port, out_sw_port+hop*7+1, 7);
-                    sw = atol(sw_port);
-                    sw1 = sw/1000;
-                    sw2 = sw%1000;
-                    Add_Rt_Set(sw1, sw2, ip_src, ip_dst, redis_ip);
-                    hop++;
-                }while(*(out_sw_port+hop*7+1) == '0');
-            }
+            // if(i == slot)
+            // {
+            //     hop = 0;
+            //     do{
+            //         strncpy(sw_port, out_sw_port+hop*7+1, 7);
+            //         sw = atol(sw_port);
+            //         sw1 = sw/1000;
+            //         sw2 = sw%1000;
+            //         Add_Rt_Set(sw1, sw2, ip_src, ip_dst, redis_ip);
+            //         hop++;
+            //     }while(*(out_sw_port+hop*7+1) == '0');
+            // }
         }
         fclose(fp);
     }
