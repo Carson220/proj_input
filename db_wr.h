@@ -126,6 +126,8 @@ RET_RESULT Get_Real_Topo(char* redis_ip, tp_sw sw_list[SW_NUM]);
 RET_RESULT Lookup_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip);
 // read link delay
 uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char* redis_ip);
+// read wait_exec
+RET_RESULT Get_Wait_Exec(uint32_t ctrl, char *buf, char* redis_ip);
 
 /*执行命令*/
 RET_RESULT redis_connect(redisContext **context, char* redis_ip);
