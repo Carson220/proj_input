@@ -28,7 +28,7 @@
 #define REDIS_SERVER_PORT 6379
 
 // #define DB_ID 2 // database_id = 192.168.68.2
-#define SERVER_IP "127.0.0.1" // tcp+udp ip
+// #define SERVER_IP "127.0.0.1" // tcp+udp ip
 #define SERVER_PORT 2345 // tcp port
 #define UDP_PORT 12000 // udp port
 #define BUFSIZE 512
@@ -50,7 +50,7 @@ void print_err(char *str, int line, int err_no) {
 	// _exit(-1);
 }
 
-int listen_init(void)
+int listen_init(char *redis_ip)
 {
     // 初始化监听套接字
     int ret;
@@ -65,7 +65,7 @@ int listen_init(void)
 
     memset(&ser_addr, 0, sizeof(ser_addr));
     ser_addr.sin_family = AF_INET;
-    ser_addr.sin_addr.s_addr = inet_addr(SERVER_IP); //IP地址，需要进行网络序转换，INADDR_ANY：本地地址
+    ser_addr.sin_addr.s_addr = inet_addr(redis_ip); //IP地址，需要进行网络序转换，INADDR_ANY：本地地址
     ser_addr.sin_port = htons(UDP_PORT);  //端口号，需要网络序转换
 
     ret = bind(server_fd, (struct sockaddr*)&ser_addr, sizeof(ser_addr));
@@ -341,7 +341,7 @@ void *udpconnect(void *redis_ip)
     pthread_t pid;
     long ret = -1;
     
-    if(listen_init() != 0)
+    if(listen_init(redis_ip) != 0)
     {
         printf("套接字初始化失败\n"); 
         return NULL;
@@ -808,7 +808,7 @@ int main(int argc, char **argv)
 	struct sockaddr_in addr;
 	addr.sin_family = AF_INET; // 设置tcp协议族
 	addr.sin_port = htons(SERVER_PORT); // 设置端口号
-	addr.sin_addr.s_addr = inet_addr(SERVER_IP); // 设置ip地址
+	addr.sin_addr.s_addr = inet_addr(redis_ip); // 设置ip地址
 
 	ret = bind(skfd, (struct sockaddr*)&addr, sizeof(addr));
 	if (ret == -1) 
