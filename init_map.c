@@ -79,7 +79,7 @@ int main(int argc,char *argv[])
             if(db_id[i] != k)
             {
                 snprintf(ip_src, addr_len, "c0a844%02x", db_id[i]+1); // 192.168.68.X
-                snprintf(ip_dst, addr_len, "c0a843%02x", k+1); // 192.168.67.X
+                snprintf(ip_dst, addr_len, "c0a842%02x", k+1); // 192.168.66.X
 
                 // lookup route
                 snprintf(cmd, CMD_MAX_LENGHT, "lrange dflrt_%s%s_%02d 0 -1", ip_src, ip_dst, slot);
