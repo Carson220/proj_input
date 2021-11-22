@@ -203,7 +203,7 @@ void *work_thread(void *redis_ip)
     if(reply->elements == 0) return NULL;
     for(i = 0; i < reply->elements; i++)
     {
-        sw = atol(reply1->element[i]->str);
+        sw = atol(reply->element[i]->str);
         sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
         sw2 = (uint32_t)(sw & 0x00000000ffffffff);
         printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
