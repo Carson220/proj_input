@@ -150,6 +150,7 @@ void *work_thread(void *redis_ip)
     char sw_port[8] = {0,}; // 存储出端口
 
     // 读取拓扑
+    printf("start to read topo\n");
     snprintf(cmd, CMD_MAX_LENGHT, "hgetall real_topo");
     redis_connect(&context, redis_ip);
     reply = (redisReply *)redisCommand(context, cmd);
@@ -177,8 +178,10 @@ void *work_thread(void *redis_ip)
     {
         matrix[i][i] = 0;
     }
+    printf("finish to read topo\n");
 
     // 去掉下个时间片要删除的链路
+    printf("start to revise topo(del some links)\n");
     snprintf(cmd, CMD_MAX_LENGHT, "smembers del_link_%02d", slot);
     context = redisConnect(redis_ip, REDIS_SERVER_PORT);
     if (context->err)
@@ -196,20 +199,21 @@ void *work_thread(void *redis_ip)
         redisFree(context);
         return NULL;
     }
-    printf("entry num = %lu\n",reply->elements);
+    printf("del_link num = %lu\n",reply->elements);
     if(reply->elements == 0) return NULL;
     for(i = 0; i < reply->elements; i++)
     {
         sw = atol(reply1->element[i]->str);
         sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
         sw2 = (uint32_t)(sw & 0x00000000ffffffff);
-        // printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
+        printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
         matrix[sw1][sw2] = MAX_DIST;
     }
     freeReplyObject(reply);
     redisFree(context);
 
     // Floyd 计算任意两点间距离
+    printf("start to run Floyd\n");
     for(k = 0; k < MAX_NUM; k++)
     {//从0开始遍历每一个中间节点，代表允许经过的结点编号<=k 
         for(i = 0; i < MAX_NUM; i++)
@@ -226,6 +230,7 @@ void *work_thread(void *redis_ip)
             }
         }
     }
+    printf("finish to run Floyd\n");
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "smembers del_link_%02d", slot);
@@ -250,7 +255,7 @@ void *work_thread(void *redis_ip)
     }
 
     // 输出查询结果
-    printf("entry num = %lu\n",reply1->elements);
+    printf("del_link num = %lu\n",reply1->elements);
     if(reply1->elements == 0) return NULL;
     for(i = 0; i < reply1->elements; i++)
     {
@@ -286,7 +291,7 @@ void *work_thread(void *redis_ip)
         }
 
         // 输出查询结果
-        printf("entry num = %lu\n",reply2->elements);
+        printf("route num = %lu\n",reply2->elements);
         if(reply2->elements == 0) continue;
         for(i = 0; i < reply2->elements; i++)
         {
@@ -354,13 +359,14 @@ void *udpconnect(void *redis_ip)
         fail_link_index = 0;
 
         // wait converge
-        sleep(SLOT_TIME/2);
+        // sleep(SLOT_TIME/2);
         //创建子线程，根据del_link遍历路由条目进行修改
         ret = pthread_create(&pid, NULL, work_thread, redis_ip);
         if (ret == -1) 
         {
             print_err("create work_thread failed", __LINE__, errno); 
         }
+        printf("create work_thread success\n");
     }
 }
 
