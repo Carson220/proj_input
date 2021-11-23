@@ -296,7 +296,7 @@ void *work_thread(void *redis_ip)
         for(i = 0; i < reply2->elements; i++)
         {
             printf("route entry: %s\n",reply2->element[i]->str);
-            strncpy(ip_src_two, reply->element[i]->str+6, 2);
+            strncpy(ip_src_two, reply2->element[i]->str+6, 2);
             sw = atol(ip_src_two)-1;
             ctrl_id = sw;
             db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
@@ -310,7 +310,7 @@ void *work_thread(void *redis_ip)
                 Del_Rt_Set(slot, ip_src, ip_dst, redis_ip);
 
                 // 向数据库写入新路由
-                strncpy(ip_dst_two, reply->element[i]->str+IP_LEN+6, 2);
+                strncpy(ip_dst_two, reply2->element[i]->str+IP_LEN+6, 2);
                 sw1 = atol(ip_src_two)-1;
                 sw2 = atol(ip_dst_two)-1;
                 if(matrix[sw1][sw2] != MAX_DIST)
@@ -754,9 +754,9 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
                     if(reply1->elements == 0) return;
                     for(i = 0; i < reply1->elements; i++)
                     {
-                        printf("ctrl_%d buf_%d: %s\n", ctrl_id, i, reply->element[i]->str);
+                        printf("ctrl_%d buf_%d: %s\n", ctrl_id, i, reply1->element[i]->str);
                         memset(buf, 0, BUFSIZE);
-                        snprintf(buf, BUFSIZE, "%s", reply->element[i]->str);
+                        snprintf(buf, BUFSIZE, "%s", reply1->element[i]->str);
                         ret = send(cfd, buf, BUFSIZE, 0);
                         if (ret == -1)
                         {
