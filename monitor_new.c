@@ -115,6 +115,23 @@ void out(int node1, int node2, int *route, int *nextsw, int *hop)
     out(*(route + node1*MAX_NUM + node2), node2, route, nextsw, hop);
 }
 
+// 用于十六进制字符串转数字
+int strtoi(char *str, int size)
+{
+    int num = 0;
+    int i = 0;
+    for(i = 0; i < size; i++)
+    {
+        if(str[i]>='0' && str[i]<='9')
+            num = num*16+(str[i]-'0');
+        else if(str[i]>='A' && str[i]<='F')
+            num = num*16+(str[i]-'A'+10);
+        else if(str[i]>='a' && str[i]<='f')
+            num = num*16+(str[i]-'a'+10);
+    }
+    return num;
+}
+
 void *work_thread(void *redis_ip)
 {
     // 校对topo将失效链路加入fail_link
@@ -297,7 +314,7 @@ void *work_thread(void *redis_ip)
         {
             printf("route entry: %s\n",reply2->element[i]->str);
             strncpy(ip_src_two, reply2->element[i]->str+6, 2);
-            sw = (ip_src_two[0]-'0')*16+(ip_src_two[1]-'0')-1;
+            sw = strtoi(ip_src_two, 2) - 1;
             ctrl_id = sw;
             db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
 
@@ -311,8 +328,8 @@ void *work_thread(void *redis_ip)
 
                 // 向数据库写入新路由
                 strncpy(ip_dst_two, reply2->element[i]->str+IP_LEN+6, 2);
-                sw1 = (ip_src_two[0]-'0')*16+(ip_src_two[1]-'0')-1;
-                sw2 = (ip_dst_two[0]-'0')*16+(ip_dst_two[1]-'0')-1;
+                sw1 = strtoi(ip_src_two, 2) - 1;
+                sw2 = strtoi(ip_dst_two, 2) - 1;
                 if(matrix[sw1][sw2] != MAX_DIST)
                 {
                     hop = 0;
@@ -601,7 +618,7 @@ int route_del(char *obj, int index, char *redis_ip)
     {
         printf("route entry: %s\n",reply->element[i]->str);
         strncpy(ip_src_two, reply->element[i]->str+6, 2);
-        sw = atol(ip_src_two)-1;
+        sw = strtoi(ip_src_two, 2) - 1;
         ctrl_id = sw;
         db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
 
@@ -629,8 +646,8 @@ int route_del(char *obj, int index, char *redis_ip)
 
             // 向数据库写入新路由
             strncpy(ip_dst_two, reply->element[i]->str+IP_LEN+6, 2);
-            sw1 = (ip_src_two[0]-'0')*16+(ip_src_two[1]-'0')-1;
-            sw2 = (ip_dst_two[0]-'0')*16+(ip_dst_two[1]-'0')-1;
+            sw1 = strtoi(ip_src_two, 2) - 1;
+            sw2 = strtoi(ip_dst_two, 2) - 1;
             if(matrix[sw1][sw2] != MAX_DIST)
             {
                 hop = 0;
