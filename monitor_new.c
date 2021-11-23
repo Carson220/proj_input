@@ -136,11 +136,7 @@ void *work_thread(void *redis_ip)
     char ip_src[IP_LEN+1] = {0,};
     char ip_dst[IP_LEN+1] = {0,};
     char ip_src_two[IP_LEN/4+1] = {0,}; // ip_src最后两位
-    ip_src_two[0] = '0';
-    ip_src_two[1] = 'x';
     char ip_dst_two[IP_LEN/4+1] = {0,}; // ip_dst最后两位
-    ip_dst_two[0] = '0';
-    ip_dst_two[1] = 'x';
 
     int matrix[MAX_NUM][MAX_NUM];
     memset(matrix, 0x3f, sizeof(matrix)); // 记录拓扑
@@ -300,8 +296,8 @@ void *work_thread(void *redis_ip)
         for(i = 0; i < reply2->elements; i++)
         {
             printf("route entry: %s\n",reply2->element[i]->str);
-            strncpy(ip_src_two+2, reply2->element[i]->str+6, 2);
-            sw = strtol(ip_src_two, NULL, 16);
+            strncpy(ip_src_two, reply2->element[i]->str+6, 2);
+            sw = (ip_src_two[0]-'0')*16+(ip_src_two[1]-'0')-1;
             ctrl_id = sw;
             db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
 
@@ -314,9 +310,9 @@ void *work_thread(void *redis_ip)
                 Del_Rt_Set(slot, ip_src, ip_dst, redis_ip);
 
                 // 向数据库写入新路由
-                strncpy(ip_dst_two+2, reply2->element[i]->str+IP_LEN+6, 2);
-                sw1 = strtol(ip_src_two, NULL, 16)-1;
-                sw2 = strtol(ip_dst_two, NULL, 16)-1;
+                strncpy(ip_dst_two, reply2->element[i]->str+IP_LEN+6, 2);
+                sw1 = (ip_src_two[0]-'0')*16+(ip_src_two[1]-'0')-1;
+                sw2 = (ip_dst_two[0]-'0')*16+(ip_dst_two[1]-'0')-1;
                 if(matrix[sw1][sw2] != MAX_DIST)
                 {
                     hop = 0;
@@ -632,9 +628,9 @@ int route_del(char *obj, int index, char *redis_ip)
             Del_Rt_Set(slot, ip_src, ip_dst, redis_ip);
 
             // 向数据库写入新路由
-            strncpy(ip_dst_two+2, reply->element[i]->str+IP_LEN+6, 2);
-            sw1 = strtol(ip_src_two, NULL, 16)-1;
-            sw2 = strtol(ip_dst_two, NULL, 16)-1;
+            strncpy(ip_dst_two, reply->element[i]->str+IP_LEN+6, 2);
+            sw1 = (ip_src_two[0]-'0')*16+(ip_src_two[1]-'0')-1;
+            sw2 = (ip_dst_two[0]-'0')*16+(ip_dst_two[1]-'0')-1;
             if(matrix[sw1][sw2] != MAX_DIST)
             {
                 hop = 0;
