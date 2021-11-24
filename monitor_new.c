@@ -72,6 +72,7 @@ int listen_init(char *redis_ip)
     if(ret < 0)
     {
         printf("socket bind fail!\n");
+        close(server_fd);
         return -1;
     }
     return 0;
@@ -169,7 +170,7 @@ void *work_thread(void *redis_ip)
     // 读取拓扑
     printf("start to read topo\n");
     snprintf(cmd, CMD_MAX_LENGHT, "hgetall real_topo");
-    redis_connect(&context, redis_ip);
+    context = redisConnect(redis_ip, REDIS_SERVER_PORT);
     reply = (redisReply *)redisCommand(context, cmd);
     if (NULL == reply)
     {
@@ -195,6 +196,8 @@ void *work_thread(void *redis_ip)
     {
         matrix[i][i] = 0;
     }
+    freeReplyObject(reply);
+    redisFree(context);
     printf("finish to read topo\n");
 
     // 去掉下个时间片要删除的链路
@@ -541,10 +544,12 @@ int route_del(char *obj, int index, char *redis_ip)
     sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
     sw2 = (uint32_t)(sw & 0x00000000ffffffff);
     printf("fail_link: sw%d<->sw%d\n",sw1, sw2); 
+    freeReplyObject(reply);
+    redisFree(context);
 
     // 读取拓扑
     snprintf(cmd, CMD_MAX_LENGHT, "hgetall real_topo");
-    redis_connect(&context, redis_ip);
+    context = redisConnect(redis_ip, REDIS_SERVER_PORT);
     reply = (redisReply *)redisCommand(context, cmd);
     if (NULL == reply)
     {
@@ -570,6 +575,8 @@ int route_del(char *obj, int index, char *redis_ip)
     {
         matrix[i][i] = 0;
     }
+    freeReplyObject(reply);
+    redisFree(context);
 
     // Floyd 计算任意两点间距离
     for(k = 0; k < MAX_NUM; k++)
@@ -613,7 +620,12 @@ int route_del(char *obj, int index, char *redis_ip)
 
     // 输出查询结果
     printf("entry num = %lu\n",reply->elements);
-    if(reply->elements == 0) return -1;
+    if(reply->elements == 0) 
+    {
+        freeReplyObject(reply);
+        redisFree(context);
+        return -1;
+    }
     for(i = 0; i < reply->elements; i++)
     {
         printf("route entry: %s\n",reply->element[i]->str);

@@ -47,7 +47,8 @@
 /*宏定义*/
 #define CMD_MAX_LENGHT 256
 // #define REDIS_SERVER_IP "192.168.10.215"
-#define REDIS_SERVER_PORT 8102
+#define REDIS_SERVER_PORT_W 8102
+#define REDIS_SERVER_PORT_R 8102
 #define redis_ip_len 20
 
 #ifndef RETURN_RESULT

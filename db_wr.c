@@ -14,7 +14,7 @@ RET_RESULT redis_connect(redisContext **context, char* redis_ip)
 {
     if(*context)
         redisFree(*context);
-	*context = redisConnect(redis_ip, REDIS_SERVER_PORT);
+	*context = redisConnect(redis_ip, REDIS_SERVER_PORT_W);
     
     if((*context)->err)
     {
@@ -44,6 +44,7 @@ RET_RESULT exeRedisIntCmd(char *cmd, char *redis_ip)
     if (NULL == cmd)
     {
         printf("\tNULL pointer");
+        redisFree(context);
         return FAILURE;
     }
 
@@ -410,11 +411,11 @@ RET_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, char* redis_ip)
     snprintf(cmd, CMD_MAX_LENGHT, "lrange calrt_%s%s 0 -1", ip_src, ip_dst);
 
     /*连接redis*/
-    context = redisConnect(redis_ip, REDIS_SERVER_PORT);
+    context = redisConnect(redis_ip, REDIS_SERVER_PORT_R);
     if (context->err)
     {
-        redisFree(context);
         printf("\tError: %s\n", context->errstr);
+        redisFree(context);
         return -1;
     }
     printf("\tconnect redis server success\n");
@@ -528,11 +529,11 @@ RET_RESULT Diff_Topo(int slot, int DB_ID, char* redis_ip)
     snprintf(cmd, CMD_MAX_LENGHT, "sdiff dfl_set_%02d real_set_%02d", slot, slot);
 
     /*连接redis*/
-    context = redisConnect(redis_ip, REDIS_SERVER_PORT);
+    context = redisConnect(redis_ip, REDIS_SERVER_PORT_R);
     if (context->err)
     {
-        redisFree(context);
         printf("\tError: %s\n", context->errstr);
+        redisFree(context);
         return FAILURE;
     }
     printf("\tconnect redis server success\n");
@@ -548,7 +549,12 @@ RET_RESULT Diff_Topo(int slot, int DB_ID, char* redis_ip)
 
     // 输出查询结果
     printf("\tfail_link num = %lu\n",reply->elements);
-    if(reply->elements == 0) return FAILURE;
+    if(reply->elements == 0) 
+    {
+        freeReplyObject(reply);
+        redisFree(context);
+        return FAILURE;
+    }
     for(i = 0; i < reply->elements; i++)
     {
         sw = atol(reply->element[i]->str);
@@ -633,6 +639,8 @@ uint32_t Get_Active_Ctrl(uint32_t sw, int slot, char* redis_ip)
     if(reply->str == NULL)
     {
         printf("\t%d Get_Active_Ctrl: failure\n", __LINE__);
+        freeReplyObject(reply);
+        redisFree(context);
         return ret;
     }
     printf("\tactive_ctrl_%02d sw:%u, ctrl:%s\n", slot, sw, reply->str);
@@ -668,6 +676,8 @@ uint32_t Get_Standby_Ctrl(uint32_t sw, int slot, char* redis_ip)
     if(reply->str == NULL)
     {
         printf("\t%d Get_Standby_Ctrl: failure\n", __LINE__);
+        freeReplyObject(reply);
+        redisFree(context);
         return ret;
     }
     printf("\tstandby_ctrl_%02d sw:%u, ctrl:%s\n", slot, sw, reply->str);
@@ -780,6 +790,8 @@ uint32_t Get_Ctrl_Conn_Db(uint32_t ctrl, char* redis_ip)
     if(reply->str == NULL)
     {
         printf("\t%d Get_Ctrl_Conn_Db: fail\n", __LINE__);
+        freeReplyObject(reply);
+        redisFree(context);
         return ret;
     }
     printf("\tctrl_conn_db ctrl:%u, db:%s\n", ctrl, reply->str);
@@ -982,6 +994,8 @@ uint64_t Get_Link_Delay(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip)
     if(reply->str == NULL)
     {
         printf("\t%d Get_Link_Delay: get link delay fail\n", __LINE__);
+        freeReplyObject(reply);
+        redisFree(context);
         return ret;
     }
     printf("\tgot topo_%02d link:sw%u<->sw%u, delay:%s us success\n", slot, sw1, sw2, reply->str);
