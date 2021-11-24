@@ -453,16 +453,16 @@ RET_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, char* redis_ip)
         }
         printf("\t\tdel rt_set_sw%02d_sw%02d rt:%s<->%s success\n", sw1, sw2, ip_src, ip_dst);
 
-        /*组装redis命令*/
-        snprintf(cmd, CMD_MAX_LENGHT, "srem rt_set_t_%02d_%02d_%02d %s%s", sw1, sw2, slot, ip_src, ip_dst);
+        // /*组装redis命令*/
+        // snprintf(cmd, CMD_MAX_LENGHT, "srem rt_set_t_%02d_%02d_%02d %s%s", sw1, sw2, slot, ip_src, ip_dst);
 
-        /*执行redis命令*/
-        if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
-        {
-            printf("\t\tdel rt_set_t_%02d_sw%02d_sw%02d rt:%s<->%s failure\n", slot, sw1, sw2, ip_src, ip_dst);
-            return FAILURE;
-        }
-        printf("\t\tdel rt_set_t_%02d_sw%02d_sw%02d rt:%s<->%s success\n", slot, sw1, sw2, ip_src, ip_dst);
+        // /*执行redis命令*/
+        // if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
+        // {
+        //     printf("\t\tdel rt_set_t_%02d_sw%02d_sw%02d rt:%s<->%s failure\n", slot, sw1, sw2, ip_src, ip_dst);
+        //     return FAILURE;
+        // }
+        // printf("\t\tdel rt_set_t_%02d_sw%02d_sw%02d rt:%s<->%s success\n", slot, sw1, sw2, ip_src, ip_dst);
 
     }
 

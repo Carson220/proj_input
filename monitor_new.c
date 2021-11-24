@@ -322,7 +322,12 @@ void *work_thread(void *redis_ip)
 
         // 输出查询结果
         printf("route num = %lu\n",reply2->elements);
-        if(reply2->elements == 0) continue;
+        if(reply2->elements == 0)
+        {
+            freeReplyObject(reply2);
+            redisFree(context2);
+            continue;
+        }
         for(i = 0; i < reply2->elements; i++)
         {
             printf("route entry: %s\n",reply2->element[i]->str);
@@ -502,6 +507,7 @@ int route_del(char *obj, int index, char *redis_ip)
     int ctrl_id = 0; // 记录控制器ID
     int db_id = 0;
     uint32_t sw1, sw2 = 0;
+    uint32_t fail_sw1, fail_sw2 = 0;
     uint64_t sw = 0;
     int port = 0;
     long cfd = -1;
@@ -558,9 +564,9 @@ int route_del(char *obj, int index, char *redis_ip)
         return -1;
     }
     sw = atol(reply->str);
-    sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
-    sw2 = (uint32_t)(sw & 0x00000000ffffffff);
-    printf("fail_link: sw%d<->sw%d\n",sw1, sw2); 
+    fail_sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
+    fail_sw2 = (uint32_t)(sw & 0x00000000ffffffff);
+    printf("fail_link: sw%d<->sw%d\n", fail_sw1, fail_sw2); 
     freeReplyObject(reply);
     redisFree(context);
 
@@ -653,7 +659,7 @@ int route_del(char *obj, int index, char *redis_ip)
     printf("finish to run Floyd\n");
 
     /*组装Redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "smembers rt_set_%02d_%02d", sw1, sw2);
+    snprintf(cmd, CMD_MAX_LENGHT, "smembers rt_set_%02d_%02d", fail_sw1, fail_sw2);
 
     /*连接redis*/
     context = redisConnect(redis_ip, REDIS_SERVER_PORT);
