@@ -220,7 +220,12 @@ void *work_thread(void *redis_ip)
         return NULL;
     }
     printf("del_link num = %lu\n",reply->elements);
-    if(reply->elements == 0) return NULL;
+    if(reply->elements == 0) 
+    {
+        freeReplyObject(reply);
+        redisFree(context);
+        return NULL;
+    }
     for(i = 0; i < reply->elements; i++)
     {
         sw = atol(reply->element[i]->str);
@@ -276,7 +281,12 @@ void *work_thread(void *redis_ip)
 
     // 输出查询结果
     printf("del_link num = %lu\n",reply1->elements);
-    if(reply1->elements == 0) return NULL;
+    if(reply1->elements == 0)
+    {
+        freeReplyObject(reply1);
+        redisFree(context1);
+        return NULL;
+    }
     for(i = 0; i < reply1->elements; i++)
     {
         sw = atol(reply1->element[i]->str);
@@ -435,7 +445,12 @@ int route_add(char *obj, char *redis_ip)
 
     // 输出查询结果
     // printf("entry num = %lu\n",reply->elements);
-    if(reply->elements == 0) return -1;
+    if(reply->elements == 0) 
+    {
+        freeReplyObject(reply);
+        redisFree(context);
+        return -1;
+    }
     for(i = 0; i < reply->elements; i++)
     {
         // printf("out_sw_port: %s\n",reply->element[i]->str);
@@ -538,6 +553,8 @@ int route_del(char *obj, int index, char *redis_ip)
     if(reply->str == NULL)
     {
         printf("return NULL\n");
+        freeReplyObject(reply);
+        redisFree(context);
         return -1;
     }
     sw = atol(reply->str);
@@ -578,7 +595,45 @@ int route_del(char *obj, int index, char *redis_ip)
     freeReplyObject(reply);
     redisFree(context);
 
+    // 去掉下个时间片要删除的链路
+    printf("start to revise topo(del some links)\n");
+    snprintf(cmd, CMD_MAX_LENGHT, "smembers del_link_%02d", slot);
+    context = redisConnect(redis_ip, REDIS_SERVER_PORT);
+    if (context->err)
+    {
+        printf("Error: %s\n", context->errstr);
+        redisFree(context);
+        return FAILURE;
+    }
+    printf("connect redis server success\n");
+
+    reply = (redisReply *)redisCommand(context, cmd);
+    if (reply == NULL)
+    {
+        printf("execute command:%s failure\n", cmd);
+        redisFree(context);
+        return FAILURE;
+    }
+    printf("del_link num = %lu\n",reply->elements);
+    if(reply->elements == 0)
+    {
+        freeReplyObject(reply);
+        redisFree(context);
+        return FAILURE;
+    }
+    for(i = 0; i < reply->elements; i++)
+    {
+        sw = atol(reply->element[i]->str);
+        sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
+        sw2 = (uint32_t)(sw & 0x00000000ffffffff);
+        printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
+        matrix[sw1][sw2] = MAX_DIST;
+    }
+    freeReplyObject(reply);
+    redisFree(context);
+
     // Floyd 计算任意两点间距离
+    printf("start to run Floyd\n");
     for(k = 0; k < MAX_NUM; k++)
     {//从0开始遍历每一个中间节点，代表允许经过的结点编号<=k 
         for(i = 0; i < MAX_NUM; i++)
@@ -595,6 +650,7 @@ int route_del(char *obj, int index, char *redis_ip)
             }
         }
     }
+    printf("finish to run Floyd\n");
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "smembers rt_set_%02d_%02d", sw1, sw2);
@@ -780,7 +836,12 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
 
                     // 输出查询结果
                     printf("entry num = %lu\n",reply1->elements);
-                    if(reply1->elements == 0) return;
+                    if(reply1->elements == 0) 
+                    {
+                        freeReplyObject(reply1);
+                        redisFree(context1);
+                        return;
+                    }
                     for(i = 0; i < reply1->elements; i++)
                     {
                         printf("ctrl_%d buf_%d: %s\n", ctrl_id, i, reply1->element[i]->str);
