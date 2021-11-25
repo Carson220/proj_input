@@ -176,6 +176,8 @@ void *work_thread(void *redis_ip)
     int hop = 0;
     char out_sw_port[CMD_MAX_LENGHT] = {0,}; // 存储出端口列表
     char sw_port[8] = {0,}; // 存储出端口
+    int fd_close[MAX_NUM] = {0,}; // 存储将要关闭的套接字
+    int fd_close_num = 0; // 记录将要关闭的套接字的数量
 
     // 读取拓扑
     printf("start to read topo\n");
@@ -357,8 +359,9 @@ void *work_thread(void *redis_ip)
                 // 判断是正在工作的控制通道路由
                 if(strstr(ip_dst, redis_ip) != NULL)
                 {
-                    // 关闭tcp套接字，通知控制器切换数据库
-                    close(fd[ctrl_id]);
+                    // 优雅关闭tcp套接字，通知控制器切换数据库
+                    shutdown(fd[ctrl_id], SHUT_WR);
+                    fd_close[fd_close_num++] = fd[ctrl_id];
                 }
 
                 // 向数据库写入新路由
@@ -381,6 +384,13 @@ void *work_thread(void *redis_ip)
                 }
             }
         }
+
+        sleep(2);
+        for(i = 0; i < fd_close_num; i++)
+        {
+            close(fd_close[i]);
+        }
+
         freeReplyObject(reply2);
         redisFree(context2);
     }
