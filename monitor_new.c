@@ -384,17 +384,16 @@ void *work_thread(void *redis_ip)
                 }
             }
         }
-
-        sleep(2);
-        for(i = 0; i < fd_close_num; i++)
-        {
-            close(fd_close[i]);
-        }
-
         freeReplyObject(reply2);
         redisFree(context2);
     }
 
+    sleep(2);
+    for(i = 0; i < fd_close_num; i++)
+    {
+        close(fd_close[i]);
+    }
+    
     freeReplyObject(reply1);
     redisFree(context1);
     return NULL;
