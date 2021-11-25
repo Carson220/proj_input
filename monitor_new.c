@@ -349,10 +349,17 @@ void *work_thread(void *redis_ip)
             // 判断起点属于本区域交换机，删除旧的链路-路由映射，向数据库写入新路由
             // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
             if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
-            {
+            {             
                 strncpy(ip_src, reply2->element[i]->str, IP_LEN);
                 strncpy(ip_dst, reply2->element[i]->str + IP_LEN, IP_LEN);
                 Del_Rt_Set(slot, ip_src, ip_dst, redis_ip);
+
+                // 判断是正在工作的控制通道路由
+                if(strstr(ip_dst, redis_ip) != NULL)
+                {
+                    // 关闭tcp套接字，通知控制器切换数据库
+                    close(fd[ctrl_id]);
+                }
 
                 // 向数据库写入新路由
                 strncpy(ip_dst_two, reply2->element[i]->str+IP_LEN+6, 2);
@@ -710,6 +717,13 @@ int route_del(char *obj, int index, char *redis_ip)
         // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
         if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
         {
+            // 判断是正在工作的控制通道路由
+            if(strstr(ip_dst, redis_ip) != NULL)
+            {
+                // 关闭tcp套接字，通知控制器切换数据库
+                close(fd[ctrl_id]);
+            }
+            
             cfd = fd[ctrl_id];
             // printf("cfd:%ld\n", cfd);
             // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,timeout:3
@@ -722,6 +736,7 @@ int route_del(char *obj, int index, char *redis_ip)
                 // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
                 Add_Wait_Exec(ctrl_id, buf, redis_ip);
             }
+            if(strstr(reply->element[2]->str, "rpush") != NULL)
 
             // 删除该路由的链路映射
             strncpy(ip_src, reply->element[i]->str, IP_LEN);
