@@ -717,6 +717,9 @@ int route_del(char *obj, int index, char *redis_ip)
         // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
         if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
         {
+            strncpy(ip_src, reply->element[i]->str, IP_LEN);
+            strncpy(ip_dst, reply->element[i]->str + IP_LEN, IP_LEN);
+            
             // 判断是正在工作的控制通道路由
             if(strstr(ip_dst, redis_ip) != NULL)
             {
@@ -739,8 +742,6 @@ int route_del(char *obj, int index, char *redis_ip)
             if(strstr(reply->element[2]->str, "rpush") != NULL)
 
             // 删除该路由的链路映射
-            strncpy(ip_src, reply->element[i]->str, IP_LEN);
-            strncpy(ip_dst, reply->element[i]->str + IP_LEN, IP_LEN);
             Del_Rt_Set(slot, ip_src, ip_dst, redis_ip);
 
             // 向数据库写入新路由
