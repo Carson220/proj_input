@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <pthread.h>
+#include <netinet/tcp.h>
 #include "db_wr.h"
 
 #define MAX_NUM 66
@@ -87,11 +88,20 @@ void *tcpconnect(void *pth_arg)
 	long cfd = -1;
     int ctrl_id = -1;
 	pthread_t id;
+    int keepAlive = 1; // 开启keepalive属性
+    int keepIdle = 1; // 如该连接在1秒内没有任何数据往来,则进行探测 
+    int keepInterval = 1; // 探测时发包的时间间隔为1 秒
+    int keepCount = 1; // 探测尝试的次数
+
 	while(1) 
     {
 		struct sockaddr_in caddr = {0};
 		int csize = sizeof(caddr);
 		cfd = accept(skfd, (struct sockaddr*)&caddr, &csize);
+        setsockopt(skfd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepAlive, sizeof(keepAlive));
+        setsockopt(skfd, SOL_TCP, TCP_KEEPIDLE, (void*)&keepIdle, sizeof(keepIdle));
+        setsockopt(skfd, SOL_TCP, TCP_KEEPINTVL, (void *)&keepInterval, sizeof(keepInterval));
+        setsockopt(skfd, SOL_TCP, TCP_KEEPCNT, (void *)&keepCount, sizeof(keepCount));
 		if (cfd == -1) 
         {
 			print_err("accept failed", __LINE__, errno);
