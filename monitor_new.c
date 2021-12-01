@@ -340,10 +340,10 @@ void *work_thread(void *redis_ip)
             redisFree(context2);
             continue;
         }
-        for(i = 0; i < reply2->elements; i++)
+        for(k = 0; k < reply2->elements; k++)
         {
-            printf("route entry: %s\n",reply2->element[i]->str);
-            strncpy(ip_src_two, reply2->element[i]->str+6, 2);
+            printf("route entry: %s\n",reply2->element[k]->str);
+            strncpy(ip_src_two, reply2->element[k]->str+6, 2);
             sw = strtoi(ip_src_two, 2) - 1;
             ctrl_id = sw;
             db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
@@ -352,20 +352,21 @@ void *work_thread(void *redis_ip)
             // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
             if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
             {             
-                strncpy(ip_src, reply2->element[i]->str, IP_LEN);
-                strncpy(ip_dst, reply2->element[i]->str + IP_LEN, IP_LEN);
+                strncpy(ip_src, reply2->element[k]->str, IP_LEN);
+                strncpy(ip_dst, reply2->element[k]->str + IP_LEN, IP_LEN);
                 Del_Rt_Set(slot, ip_src, ip_dst, redis_ip);
 
                 // 判断是正在工作的控制通道路由
-                if(strstr(ip_dst, redis_ip) != NULL)
+                if((strstr(ip_dst, redis_ip) != NULL) || (strstr(ip_src, redis_ip) != NULL))
                 {
                     // 优雅关闭tcp套接字，通知控制器切换数据库
                     shutdown(fd[ctrl_id], SHUT_WR);
                     fd_close[fd_close_num++] = fd[ctrl_id];
+                    fd[ctrl_id] = 0;
                 }
 
                 // 向数据库写入新路由
-                strncpy(ip_dst_two, reply2->element[i]->str+IP_LEN+6, 2);
+                strncpy(ip_dst_two, reply2->element[k]->str+IP_LEN+6, 2);
                 sw1 = strtoi(ip_src_two, 2) - 1;
                 sw2 = strtoi(ip_dst_two, 2) - 1;
                 if(matrix[sw1][sw2] != MAX_DIST)
@@ -381,6 +382,7 @@ void *work_thread(void *redis_ip)
                         strncpy(out_sw_port + j * 7, sw_port, 7);
                     }
                     Set_Cal_Route(ip_src, ip_dst, out_sw_port, redis_ip);
+                    memset(out_sw_port, 0, CMD_MAX_LENGHT);
                 }
             }
         }
@@ -393,7 +395,7 @@ void *work_thread(void *redis_ip)
     {
         close(fd_close[i]);
     }
-    
+
     freeReplyObject(reply1);
     redisFree(context1);
     return NULL;
@@ -770,6 +772,7 @@ int route_del(char *obj, int index, char *redis_ip)
                     strncpy(out_sw_port + j * 7, sw_port, 7);
                 }
                 Set_Cal_Route(ip_src, ip_dst, out_sw_port, redis_ip);
+                memset(out_sw_port, 0, CMD_MAX_LENGHT);
             }
         }
     }
