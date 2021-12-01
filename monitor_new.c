@@ -225,26 +225,17 @@ void *work_thread(void *redis_ip)
     printf("connect redis server success\n");
 
     reply = (redisReply *)redisCommand(context, cmd);
-    if (reply == NULL)
+    if (reply != NULL && reply->elements != 0)
     {
-        printf("execute command:%s failure\n", cmd);
-        redisFree(context);
-        return NULL;
-    }
-    printf("del_link num = %lu\n",reply->elements);
-    if(reply->elements == 0) 
-    {
-        freeReplyObject(reply);
-        redisFree(context);
-        return NULL;
-    }
-    for(i = 0; i < reply->elements; i++)
-    {
-        sw = atol(reply->element[i]->str);
-        sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
-        sw2 = (uint32_t)(sw & 0x00000000ffffffff);
-        printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
-        matrix[sw1][sw2] = MAX_DIST;
+        printf("del_link num = %lu\n",reply->elements);
+        for(i = 0; i < reply->elements; i++)
+        {
+            sw = atol(reply->element[i]->str);
+            sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
+            sw2 = (uint32_t)(sw & 0x00000000ffffffff);
+            printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
+            matrix[sw1][sw2] = MAX_DIST;
+        }
     }
     freeReplyObject(reply);
     redisFree(context);
@@ -284,118 +275,109 @@ void *work_thread(void *redis_ip)
 
     /*执行redis命令*/
     reply1 = (redisReply *)redisCommand(context1, cmd);
-    if (reply1 == NULL)
+    if (reply1 != NULL && reply1->elements != 0)
     {
-        printf("execute command:%s failure\n", cmd);
-        redisFree(context1);
-        return NULL;
-    }
-
-    // 输出查询结果
-    printf("del_link num = %lu\n",reply1->elements);
-    if(reply1->elements == 0)
-    {
-        freeReplyObject(reply1);
-        redisFree(context1);
-        return NULL;
-    }
-    for(i = 0; i < reply1->elements; i++)
-    {
-        sw = atol(reply1->element[i]->str);
-        sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
-        sw2 = (uint32_t)(sw & 0x00000000ffffffff);
-        printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
-
-        ctrl_id = sw1;
-        db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
-
-        // 查询相关的非定时路由
-        /*组装Redis命令*/
-        snprintf(cmd, CMD_MAX_LENGHT, "smembers rt_set_%02d_%02d", sw1, sw2);
-
-        /*连接redis*/
-        context2 = redisConnect(redis_ip, REDIS_SERVER_PORT);
-        if (context2->err)
-        { 
-            printf("Error: %s\n", context2->errstr);
-            redisFree(context2);
-            continue;
-        }
-        printf("connect redis server success\n");
-
-        /*执行redis命令*/
-        reply2 = (redisReply *)redisCommand(context2, cmd);
-        if (reply2 == NULL)
-        {
-            printf("execute command:%s failure\n", cmd);
-            redisFree(context2);
-            continue;
-        }
-
         // 输出查询结果
-        printf("route num = %lu\n",reply2->elements);
-        if(reply2->elements == 0)
+        printf("del_link num = %lu\n",reply1->elements);
+
+        for(i = 0; i < reply1->elements; i++)
         {
-            freeReplyObject(reply2);
-            redisFree(context2);
-            continue;
-        }
-        for(k = 0; k < reply2->elements; k++)
-        {
-            printf("route entry: %s\n",reply2->element[k]->str);
-            strncpy(ip_src_two, reply2->element[k]->str+6, 2);
-            sw = strtoi(ip_src_two, 2) - 1;
-            ctrl_id = sw;
+            sw = atol(reply1->element[i]->str);
+            sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
+            sw2 = (uint32_t)(sw & 0x00000000ffffffff);
+            printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
+
+            ctrl_id = sw1;
             db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
 
-            // 判断起点属于本区域交换机，删除旧的链路-路由映射，向数据库写入新路由
-            // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
-            if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
-            {             
-                strncpy(ip_src, reply2->element[k]->str, IP_LEN);
-                strncpy(ip_dst, reply2->element[k]->str + IP_LEN, IP_LEN);
-                Del_Rt_Set(slot, ip_src, ip_dst, redis_ip);
+            // 查询相关的非定时路由
+            /*组装Redis命令*/
+            snprintf(cmd, CMD_MAX_LENGHT, "smembers rt_set_%02d_%02d", sw1, sw2);
 
-                // 判断是正在工作的控制通道路由
-                if((strstr(ip_dst, redis_ip) != NULL) || (strstr(ip_src, redis_ip) != NULL))
-                {
-                    // 优雅关闭tcp套接字，通知控制器切换数据库
-                    shutdown(fd[ctrl_id], SHUT_WR);
-                    fd_close[fd_close_num++] = fd[ctrl_id];
-                    fd[ctrl_id] = 0;
-                }
+            /*连接redis*/
+            context2 = redisConnect(redis_ip, REDIS_SERVER_PORT);
+            if (context2->err)
+            { 
+                printf("Error: %s\n", context2->errstr);
+                redisFree(context2);
+                continue;
+            }
+            printf("connect redis server success\n");
 
-                // 向数据库写入新路由
-                strncpy(ip_dst_two, reply2->element[k]->str+IP_LEN+6, 2);
-                sw1 = strtoi(ip_src_two, 2) - 1;
-                sw2 = strtoi(ip_dst_two, 2) - 1;
-                if(matrix[sw1][sw2] != MAX_DIST)
-                {
-                    hop = 0;
-                    nextsw[hop++] = sw1;
-                    out(sw1, sw2, &route[0][0], nextsw, &hop);
-                    nextsw[hop] = sw2;
+            /*执行redis命令*/
+            reply2 = (redisReply *)redisCommand(context2, cmd);
+            if (reply2 == NULL)
+            {
+                printf("execute command:%s failure\n", cmd);
+                redisFree(context2);
+                continue;
+            }
 
-                    for(j = 0; j < hop; j++)
+            // 输出查询结果
+            printf("route num = %lu\n",reply2->elements);
+            if(reply2->elements == 0)
+            {
+                freeReplyObject(reply2);
+                redisFree(context2);
+                continue;
+            }
+            for(k = 0; k < reply2->elements; k++)
+            {
+                printf("route entry: %s\n",reply2->element[k]->str);
+                strncpy(ip_src_two, reply2->element[k]->str+6, 2);
+                sw = strtoi(ip_src_two, 2) - 1;
+                ctrl_id = sw;
+                db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
+
+                // 判断起点属于本区域交换机，删除旧的链路-路由映射，向数据库写入新路由
+                // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
+                if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
+                {             
+                    strncpy(ip_src, reply2->element[k]->str, IP_LEN);
+                    strncpy(ip_dst, reply2->element[k]->str + IP_LEN, IP_LEN);
+                    Del_Rt_Set(slot, ip_src, ip_dst, redis_ip);
+
+                    // 判断是正在工作的控制通道路由
+                    if((strstr(ip_dst, redis_ip) != NULL) || (strstr(ip_src, redis_ip) != NULL))
                     {
-                        snprintf(sw_port, 8, "%03d%03d ", nextsw[j], nextsw[j+1]);
-                        strncpy(out_sw_port + j * 7, sw_port, 7);
+                        // 优雅关闭tcp套接字，通知控制器切换数据库
+                        shutdown(fd[ctrl_id], SHUT_WR);
+                        fd_close[fd_close_num++] = fd[ctrl_id];
+                        fd[ctrl_id] = 0;
                     }
-                    Set_Cal_Route(ip_src, ip_dst, out_sw_port, redis_ip);
-                    memset(out_sw_port, 0, CMD_MAX_LENGHT);
+
+                    // 向数据库写入新路由
+                    strncpy(ip_dst_two, reply2->element[k]->str+IP_LEN+6, 2);
+                    sw1 = strtoi(ip_src_two, 2) - 1;
+                    sw2 = strtoi(ip_dst_two, 2) - 1;
+                    if(matrix[sw1][sw2] != MAX_DIST)
+                    {
+                        hop = 0;
+                        nextsw[hop++] = sw1;
+                        out(sw1, sw2, &route[0][0], nextsw, &hop);
+                        nextsw[hop] = sw2;
+
+                        for(j = 0; j < hop; j++)
+                        {
+                            snprintf(sw_port, 8, "%03d%03d ", nextsw[j], nextsw[j+1]);
+                            strncpy(out_sw_port + j * 7, sw_port, 7);
+                        }
+                        Set_Cal_Route(ip_src, ip_dst, out_sw_port, redis_ip);
+                        memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                    }
                 }
             }
+            freeReplyObject(reply2);
+            redisFree(context2);
         }
-        freeReplyObject(reply2);
-        redisFree(context2);
-    }
 
-    sleep(2);
-    for(i = 0; i < fd_close_num; i++)
-    {
-        close(fd_close[i]);
+        sleep(2);
+        for(i = 0; i < fd_close_num; i++)
+        {
+            close(fd_close[i]);
+        }
     }
-
+  
     freeReplyObject(reply1);
     redisFree(context1);
     return NULL;
@@ -642,26 +624,18 @@ int route_del(char *obj, int index, char *redis_ip)
     printf("connect redis server success\n");
 
     reply = (redisReply *)redisCommand(context, cmd);
-    if (reply == NULL)
+    if (reply != NULL && reply->elements != 0)
     {
-        printf("execute command:%s failure\n", cmd);
-        redisFree(context);
-        return FAILURE;
-    }
-    printf("del_link num = %lu\n",reply->elements);
-    if(reply->elements == 0)
-    {
-        freeReplyObject(reply);
-        redisFree(context);
-        return FAILURE;
-    }
-    for(i = 0; i < reply->elements; i++)
-    {
-        sw = atol(reply->element[i]->str);
-        sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
-        sw2 = (uint32_t)(sw & 0x00000000ffffffff);
-        printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
-        matrix[sw1][sw2] = MAX_DIST;
+        printf("del_link num = %lu\n",reply->elements);
+
+        for(i = 0; i < reply->elements; i++)
+        {
+            sw = atol(reply->element[i]->str);
+            sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
+            sw2 = (uint32_t)(sw & 0x00000000ffffffff);
+            printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
+            matrix[sw1][sw2] = MAX_DIST;
+        }
     }
     freeReplyObject(reply);
     redisFree(context);
