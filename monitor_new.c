@@ -43,7 +43,7 @@
 
 int fd[MAX_NUM] = {0, }; // 记录不同控制器节点对应的套接字描述符
 int slot = 0; // slot_id
-int fail_link_index = 0; // 记录已经处理到的fail_link列表的索引
+int fail_link_index[MAX_NUM] = {0, }; // 记录已经处理到的fail_link列表的索引
 int server_fd = -1; // UDP监听的套接字
 
 void print_err(char *str, int line, int err_no) {
@@ -390,6 +390,9 @@ void *udpconnect(void *redis_ip)
     socklen_t len = sizeof(struct sockaddr_in);
     pthread_t pid;
     long ret = -1;
+    char ip_two[IP_LEN/4+1] = {0,}; // redis_ip最后两位
+    strncpy(ip_two, redis_ip+11, 2);
+    int redis_id = atoi(ip_two)-1;
     
     if(listen_init(redis_ip) != 0)
     {
@@ -401,7 +404,7 @@ void *udpconnect(void *redis_ip)
         bzero(&buf, sizeof(buf));
         recvfrom(server_fd, buf, BUFSIZE, 0, (struct sockaddr*)clent_addr, &len);
         slot = atoi(buf);
-        fail_link_index = 0;
+        memset(fail_link_index, 0 , sizeof(fail_link_index));
 
         // wait converge
         // sleep(SLOT_TIME/2);
@@ -763,10 +766,9 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
     int i = 0;
     redisReply *reply = (redisReply*)r;
     if (reply == NULL) return;
-    char str[13] = {0,};
-    // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
-    snprintf(str, 13, "fail_link_%02d", (((inet_addr(redis_ip))&0xff000000)>>24) - 1);
     char reply_str[26] = {0,};
+    char ip_two[IP_LEN/4+1] = {0,}; // redis_ip最后两位
+    int redis_id = -1;
 
     int ctrl_id = 0;  // 记录控制器ID
     char ctrl_str[3] = {0,};
@@ -809,15 +811,17 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
                 else
                     printf("cal route add success\n");
             }
-            // 判断是fail_link_db
-            else if(strstr(reply->element[3]->str, str) != NULL) 
+            // 判断是fail_link
+            else if(strstr(reply->element[3]->str, "fail_link") != NULL) 
             {
                 // 查询数据库，下发流表项
-                if(route_del(reply->element[3]->str, fail_link_index, redis_ip) == -1)
+                strncpy(ip_two, reply->element[3]->str+10, 2);
+                redis_id = atoi(ip_two);
+                if(route_del(reply->element[3]->str, fail_link_index[redis_id], redis_ip) == -1)
                     printf("route del failure\n");
                 else
                     printf("route del success\n");
-                fail_link_index++;
+                fail_link_index[redis_id]++;
             }
         }
         // 判断操作是否为sadd
