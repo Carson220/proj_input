@@ -337,8 +337,8 @@ void *work_thread(void *redis_ip)
                     strncpy(ip_dst, reply2->element[k]->str + IP_LEN, IP_LEN);
                     Del_Rt_Set(slot, ip_src, ip_dst, redis_ip);
 
-                    // 判断是正在工作的控制通道路由
-                    if((strstr(ip_dst, redis_ip) != NULL) || (strstr(ip_src, redis_ip) != NULL))
+                    // 判断是正在工作的c2d控制通道路由
+                    if(((strstr(ip_dst, redis_ip) != NULL) && (strstr(ip_src, "44") == NULL)) || ((strstr(ip_src, redis_ip) != NULL) && (strstr(ip_dst, "44") == NULL)))
                     {
                         // 优雅关闭tcp套接字，通知控制器切换数据库
                         shutdown(fd[ctrl_id], SHUT_WR);
@@ -508,6 +508,7 @@ int route_add(char *obj, char *redis_ip)
 }
 
 // 遍历传入的失效链路，将失效链路上的全部路由都调整为可行的新路由，向相应的控制器发送 删除/新增 流表项通告
+// 计算新路由时采用的真实拓扑real_topo，可能会在新路由下发过程中发生变化，为了保证路由调整的有效性，控制器在下发新增流表前需要判断其合法性
 int route_del(char *obj, int index, char *redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
