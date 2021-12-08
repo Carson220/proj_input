@@ -579,7 +579,7 @@ int route_del(char *obj, int index, char *redis_ip)
     }
     sw = atol(reply->str);
     fail_sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
-    fail_sw2 = (uint32_t)(sw & 0x00000000ffffffff);
+    fail_sw2 = (uint32_t)(sw & 0x00000000ffffffff); // 失效节点
     printf("fail_link: sw%d<->sw%d\n", fail_sw1, fail_sw2); 
     freeReplyObject(reply);
     redisFree(context);
@@ -605,7 +605,8 @@ int route_del(char *obj, int index, char *redis_ip)
         else// delay
         {
             delay = atol(reply->element[i]->str);
-            matrix[node1][node2] = delay;
+            if(node1 != fail_sw2 && node2 != fail_sw2)
+                matrix[node1][node2] = delay;
         }
     }
     for(i = 0; i < MAX_NUM; i++)
