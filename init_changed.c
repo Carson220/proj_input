@@ -283,6 +283,7 @@ RET_RESULT wr_dfl_d2d(int slot_no, FILE *fp, char* redis_ip)
         fscanf(fp, "%d", &sw1);
         for(k = 1; k < db_num; k++)
         {
+            // d2d_1
             fscanf(fp, "%d", &sw1);
             fscanf(fp, "%d", &sw2);
             fgets(out_sw_port, CMD_MAX_LENGHT, fp);
@@ -292,7 +293,7 @@ RET_RESULT wr_dfl_d2d(int slot_no, FILE *fp, char* redis_ip)
             snprintf(ip_dst, addr_len, "c0a844%02x", sw2+1);
 
             // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, slot_no, redis_ip);
-            snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s",  ip_src, ip_dst, slot_no, out_sw_port);
+            snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d_1 %s",  ip_src, ip_dst, slot_no, out_sw_port);
             if(context == NULL)
             {
                 do{
@@ -311,6 +312,37 @@ RET_RESULT wr_dfl_d2d(int slot_no, FILE *fp, char* redis_ip)
             }
             freeReplyObject(reply);
             printf("%d execute command:%s success\n", __LINE__, cmd);
+
+            // d2d_2
+            fscanf(fp, "%d", &sw1);
+            fscanf(fp, "%d", &sw2);
+            fgets(out_sw_port, CMD_MAX_LENGHT, fp);
+            out_sw_port[strlen(out_sw_port)-1]='\0';
+            
+            snprintf(ip_src, addr_len, "c0a844%02x", sw1+1); // 192.168.68.X
+            snprintf(ip_dst, addr_len, "c0a844%02x", sw2+1);
+
+            // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, slot_no, redis_ip);
+            snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d_2 %s",  ip_src, ip_dst, slot_no, out_sw_port);
+            if(context == NULL)
+            {
+                do{
+                    context = NULL;
+                    ret = redis_connect(&context, redis_ip); 
+                    usleep(3000);
+                }while(ret == FAILURE);
+            }
+            
+            reply = (redisReply *)redisCommand(context, cmd);
+            if (NULL == reply)
+            {
+                printf("%d execute command:%s failure\n", __LINE__, cmd);
+                redisFree(context);
+                return FAILURE;
+            }
+            freeReplyObject(reply);
+            printf("%d execute command:%s success\n", __LINE__, cmd);
+
 
             // add link-route map
             // if(slot_init == slot_no)
@@ -456,7 +488,7 @@ RET_RESULT wr_dfl_c2d(int slot_no, FILE *fp, char* redis_ip)
         snprintf(ip_src, addr_len, "c0a844%02x", sw1+1); // 192.168.68.X
         snprintf(ip_dst, addr_len, "c0a842%02x", sw2+1); // 192.168.66.X
         // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
-        snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot_no, out_sw_port);
+        snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d_1 %s", ip_src, ip_dst, slot_no, out_sw_port);
         if(context == NULL)
         {
             do{
@@ -518,7 +550,7 @@ RET_RESULT wr_dfl_c2d(int slot_no, FILE *fp, char* redis_ip)
         snprintf(ip_src, addr_len, "c0a842%02x", sw1+1); // 192.168.66.X
         snprintf(ip_dst, addr_len, "c0a844%02x", sw2+1); // 192.168.68.X
         // Set_Dfl_Route(ip_src, ip_dst, out_sw_port, i, redis_ip);
-        snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot_no, out_sw_port);
+        snprintf(cmd, CMD_MAX_LENGHT, "rpush dflrt_%s%s_%02d_1 %s", ip_src, ip_dst, slot_no, out_sw_port);
         if(context == NULL)
         {
             do{

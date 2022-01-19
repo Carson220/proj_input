@@ -27,6 +27,7 @@ int main(int argc,char *argv[])
 
     char cmd[CMD_MAX_LENGHT] = {0};
     redisContext *context=NULL;
+    redisContext *context1=NULL;
     redisReply *reply=NULL;
 
     for(i = 0; i < db_num; i++)
@@ -39,13 +40,21 @@ int main(int argc,char *argv[])
                 snprintf(ip_src, addr_len, "c0a844%02x", db_id[i]+1); // 192.168.68.X
                 snprintf(ip_dst, addr_len, "c0a844%02x", db_id[j]+1);
 
-                // lookup route
-                snprintf(cmd, CMD_MAX_LENGHT, "lrange dflrt_%s%s_%02d 0 -1", ip_src, ip_dst, slot);
+                // lookup route d2d_1
+                snprintf(cmd, CMD_MAX_LENGHT, "lrange dflrt_%s%s_%02d_1 0 -1", ip_src, ip_dst, slot);
                 if(context == NULL)
                 {
                     do{
                         context = NULL;
                         ret = redis_connect(&context, redis_ip); 
+                        usleep(3000);
+                    }while(ret == FAILURE);
+                }
+                if(context1 == NULL)
+                {
+                    do{
+                        context1 = NULL;
+                        ret = redis_connect(&context1, redis_ip); 
                         usleep(3000);
                     }while(ret == FAILURE);
                 }
@@ -58,7 +67,7 @@ int main(int argc,char *argv[])
                 }
 
                 // 输出查询结果
-                printf("dflrt_%s%s_%02d entry num = %lu\n", ip_src, ip_dst, slot, reply->elements);
+                printf("d2drt_%s%s_%02d_1 entry num = %lu\n", ip_src, ip_dst, slot, reply->elements);
                 if(reply->elements == 0) return -1;
                 for(m = 0; m < reply->elements; m++)
                 {
@@ -66,7 +75,53 @@ int main(int argc,char *argv[])
                     sw1 = atoi(reply->element[m]->str)/1000;
                     sw2 = atoi(reply->element[m]->str)%1000;
                     // add link-route map
-                    Add_Rt_Set(sw1, sw2, ip_src, ip_dst, redis_ip);
+                    Add_Rt_Set(sw1, sw2, ip_src, ip_dst, 1, redis_ip);
+                    // write calrt
+                    snprintf(cmd, CMD_MAX_LENGHT, "rpush calrt_%s%s_1 %s", ip_src, ip_dst, reply->element[m]->str);
+                    redisCommand(context1, cmd);
+                }
+                
+                freeReplyObject(reply);
+
+                // lookup route d2d_2
+                snprintf(cmd, CMD_MAX_LENGHT, "lrange dflrt_%s%s_%02d_2 0 -1", ip_src, ip_dst, slot);
+                if(context == NULL)
+                {
+                    do{
+                        context = NULL;
+                        ret = redis_connect(&context, redis_ip); 
+                        usleep(3000);
+                    }while(ret == FAILURE);
+                }
+                if(context1 == NULL)
+                {
+                    do{
+                        context1 = NULL;
+                        ret = redis_connect(&context1, redis_ip); 
+                        usleep(3000);
+                    }while(ret == FAILURE);
+                }
+                reply = (redisReply *)redisCommand(context, cmd);
+                if (reply == NULL)
+                {
+                    printf("\texecute command:%s failure\n", cmd);
+                    redisFree(context);
+                    return -1;
+                }
+
+                // 输出查询结果
+                printf("d2drt_%s%s_%02d_2 entry num = %lu\n", ip_src, ip_dst, slot, reply->elements);
+                if(reply->elements == 0) return -1;
+                for(m = 0; m < reply->elements; m++)
+                {
+                    printf("\tout_sw_port: %s\n",reply->element[m]->str);
+                    sw1 = atoi(reply->element[m]->str)/1000;
+                    sw2 = atoi(reply->element[m]->str)%1000;
+                    // add link-route map
+                    Add_Rt_Set(sw1, sw2, ip_src, ip_dst, 2, redis_ip);
+                    // write calrt
+                    snprintf(cmd, CMD_MAX_LENGHT, "rpush calrt_%s%s_2 %s", ip_src, ip_dst, reply->element[m]->str);
+                    redisCommand(context1, cmd);
                 }
                 
                 freeReplyObject(reply);
@@ -82,15 +137,23 @@ int main(int argc,char *argv[])
                 snprintf(ip_dst, addr_len, "c0a842%02x", k+1); // 192.168.66.X
 
                 // lookup route
-                snprintf(cmd, CMD_MAX_LENGHT, "lrange dflrt_%s%s_%02d 0 -1", ip_src, ip_dst, slot);
-                context = redisConnect(redis_ip, REDIS_SERVER_PORT);
-                if (context->err)
+                snprintf(cmd, CMD_MAX_LENGHT, "lrange dflrt_%s%s_%02d_1 0 -1", ip_src, ip_dst, slot);
+                if(context == NULL)
                 {
-                    redisFree(context);
-                    printf("\tError: %s\n", context->errstr);
-                    return -1;
+                    do{
+                        context = NULL;
+                        ret = redis_connect(&context, redis_ip); 
+                        usleep(3000);
+                    }while(ret == FAILURE);
                 }
-                // printf("\tconnect redis server success\n");
+                if(context1 == NULL)
+                {
+                    do{
+                        context1 = NULL;
+                        ret = redis_connect(&context1, redis_ip); 
+                        usleep(3000);
+                    }while(ret == FAILURE);
+                }
                 reply = (redisReply *)redisCommand(context, cmd);
                 if (reply == NULL)
                 {
@@ -108,8 +171,13 @@ int main(int argc,char *argv[])
                     sw1 = atoi(reply->element[m]->str)/1000;
                     sw2 = atoi(reply->element[m]->str)%1000;
                     // add link-route map
-                    Add_Rt_Set(sw1, sw2, ip_src, ip_dst, redis_ip);
-                    Add_Rt_Set(sw2, sw1, ip_dst, ip_src, redis_ip);
+                    Add_Rt_Set(sw1, sw2, ip_src, ip_dst, 1, redis_ip);
+                    Add_Rt_Set(sw2, sw1, ip_dst, ip_src, 1, redis_ip);
+                    // write calrt
+                    snprintf(cmd, CMD_MAX_LENGHT, "rpush calrt_%s%s_1 %s", ip_src, ip_dst, reply->element[m]->str);
+                    redisCommand(context1, cmd);
+                    snprintf(cmd, CMD_MAX_LENGHT, "rpush calrt_%s%s_1 %03d%03d", ip_dst, ip_src, sw2, sw1);
+                    redisCommand(context1, cmd);
                 }
                 
                 freeReplyObject(reply);
@@ -118,5 +186,6 @@ int main(int argc,char *argv[])
     }
 
     redisFree(context);
+    redisFree(context1);
     return 0;
 }

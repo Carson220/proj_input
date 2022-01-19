@@ -155,7 +155,7 @@ void *work_thread(void *redis_ip)
     redisReply *reply, *reply1, *reply2;
     uint64_t sw;
     uint32_t sw1, sw2;
-    int i, j, k = 0;
+    int i, j, k, a, b, c = 0;
     int ctrl_id = 0; // 记录控制器ID
     int db_id = 0;
     long cfd = -1;
@@ -163,11 +163,16 @@ void *work_thread(void *redis_ip)
     char buf[BUFSIZE] = {0,};
     char ip_src[IP_LEN+1] = {0,};
     char ip_dst[IP_LEN+1] = {0,};
+    int num = 1; // 路由序号
     char ip_src_two[IP_LEN/4+1] = {0,}; // ip_src最后两位
     char ip_dst_two[IP_LEN/4+1] = {0,}; // ip_dst最后两位
 
     int matrix[MAX_NUM][MAX_NUM];
-    memset(matrix, 0x3f, sizeof(matrix)); // 记录拓扑
+    memset(matrix, 0x3f, sizeof(matrix)); // 记录Floyd距离
+    int matrix_ori[MAX_NUM][MAX_NUM];
+    memset(matrix_ori, 0x3f, sizeof(matrix_ori)); // 记录原始拓扑
+    int matrix_new[MAX_NUM][MAX_NUM];
+    memset(matrix_new, 0x3f, sizeof(matrix_new)); // 记录用于Suurballe计算的拓扑
     uint32_t node1, node2 = 0;
     uint64_t delay = 0;
     int route[MAX_NUM][MAX_NUM]; // 记录松弛节点
@@ -178,6 +183,19 @@ void *work_thread(void *redis_ip)
     char sw_port[8] = {0,}; // 存储出端口
     int fd_close[MAX_NUM] = {0,}; // 存储将要关闭的套接字
     int fd_close_num = 0; // 记录将要关闭的套接字的数量
+    int flag_fd[MAX_NUM] = {0,}; // 标记是否被记录在fd_close中
+
+    int mindist = 0;
+    int minnode = -1;
+    int curnode = -1;
+    int prenode = -1;
+    int flag = 0; // flag=1表示第一次dijkstra计算成功
+    int node[MAX_NUM][4] = {0,}; // node[x][0]标记该节点是否已经加入最短路, node[x][1]表示到源节点到该节点的最短距离, node[x][2]记录该节点在最短路径上的前驱节点, node[x][4]记录该节点在最短路径上的后继节点
+    int node_new[MAX_NUM][4] = {0,}; // 用于第二次dijkstra计算
+    int path[MAX_NUM] = {0,}; // 第一次dijkstra的结果
+    int path_new[MAX_NUM] = {0,}; // 第二次dijkstra的结果
+    int path_1[MAX_NUM] = {0,}; // 链路分离路径1
+    int path_2[MAX_NUM] = {0,}; // 链路分离路径2
 
     // 读取拓扑
     printf("start to read topo\n");
@@ -201,12 +219,12 @@ void *work_thread(void *redis_ip)
         else// delay
         {
             delay = atol(reply->element[i]->str);
-            matrix[node1][node2] = delay;
+            matrix_ori[node1][node2] = delay;
         }
     }
     for(i = 0; i < MAX_NUM; i++)
     {
-        matrix[i][i] = 0;
+        matrix_ori[i][i] = 0;
     }
     freeReplyObject(reply);
     redisFree(context);
@@ -234,7 +252,7 @@ void *work_thread(void *redis_ip)
             sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
             sw2 = (uint32_t)(sw & 0x00000000ffffffff);
             printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
-            matrix[sw1][sw2] = MAX_DIST;
+            matrix_ori[sw1][sw2] = MAX_DIST;
         }
     }
     freeReplyObject(reply);
@@ -242,6 +260,13 @@ void *work_thread(void *redis_ip)
 
     // Floyd 计算任意两点间距离
     printf("start to run Floyd\n");
+    for(i = 0; i < MAX_NUM; i++)
+    {
+        for(j = 0; j < MAX_NUM; j++)
+        {
+            matrix[i][j] = matrix_ori[i][j];
+        }
+    }
     for(k = 0; k < MAX_NUM; k++)
     {//从0开始遍历每一个中间节点，代表允许经过的结点编号<=k 
         for(i = 0; i < MAX_NUM; i++)
@@ -314,13 +339,14 @@ void *work_thread(void *redis_ip)
             }
 
             // 输出查询结果
-            printf("route num = %lu\n",reply2->elements);
+            printf("del route num = %lu\n",reply2->elements);
             if(reply2->elements == 0)
             {
                 freeReplyObject(reply2);
                 redisFree(context2);
                 continue;
             }
+
             for(k = 0; k < reply2->elements; k++)
             {
                 printf("route entry: %s\n",reply2->element[k]->str);
@@ -335,46 +361,431 @@ void *work_thread(void *redis_ip)
                 {             
                     strncpy(ip_src, reply2->element[k]->str, IP_LEN);
                     strncpy(ip_dst, reply2->element[k]->str + IP_LEN, IP_LEN);
-                    Del_Rt_Set(slot, ip_src, ip_dst, redis_ip);
+                    num = reply2->element[k]->str[IP_LEN*2] - '0';
+                    Del_Rt_Set(slot, ip_src, ip_dst, num, redis_ip);
 
-                    // 判断是正在工作的c2d控制通道路由
-                    if(((strstr(ip_dst, redis_ip) != NULL) && (strstr(ip_src, "44") == NULL)) || ((strstr(ip_src, redis_ip) != NULL) && (strstr(ip_dst, "44") == NULL)))
-                    {
-                        // 优雅关闭tcp套接字，通知控制器切换数据库
-                        shutdown(fd[ctrl_id], SHUT_WR);
-                        fd_close[fd_close_num++] = fd[ctrl_id];
-                        fd[ctrl_id] = 0;
-                    }
-
-                    // 向数据库写入新路由
                     strncpy(ip_dst_two, reply2->element[k]->str+IP_LEN+6, 2);
                     sw1 = strtoi(ip_src_two, 2) - 1;
                     sw2 = strtoi(ip_dst_two, 2) - 1;
-                    if(matrix[sw1][sw2] != MAX_DIST)
+                    
+                    // 判断是d2d路由 && 源节点是本地数据库
+                    if( (strstr(ip_dst, "44") != NULL) && (strstr(ip_src, "44") != NULL) )
                     {
-                        hop = 0;
-                        nextsw[hop++] = sw1;
-                        out(sw1, sw2, &route[0][0], nextsw, &hop);
-                        nextsw[hop] = sw2;
+                        // 把两条d2d路由的链路映射都删掉
+                        if(num == 1) Del_Rt_Set(slot, ip_src, ip_dst, 2, redis_ip);
+                        else Del_Rt_Set(slot, ip_src, ip_dst, 1, redis_ip);
 
-                        for(j = 0; j < hop; j++)
+                        // Suurballe 计算两点之间的路由
+                        // 初始化
+                        printf("start to run Suurballe\n");
+                        strncpy(ip_dst_two, reply2->element[k]->str+IP_LEN+6, 2);
+                        sw1 = strtoi(ip_src_two, 2) - 1;
+                        sw2 = strtoi(ip_dst_two, 2) - 1;
+                        mindist = 0;
+                        minnode = -1;
+                        curnode = -1;
+                        prenode = -1;
+                        flag = 0; 
+                        memset(path, -1, sizeof(path));
+                        memset(path_new, -1, sizeof(path_new));
+                        memset(path_1, -1, sizeof(path_1));
+                        memset(path_2, -1, sizeof(path_2));
+                        for(a = 0; a < MAX_NUM; a++)
                         {
-                            snprintf(sw_port, 8, "%03d%03d ", nextsw[j], nextsw[j+1]);
-                            strncpy(out_sw_port + j * 7, sw_port, 7);
+                            node[a][0] = 0;
+                            node[a][1] = MAX_DIST;
+                            node[a][2] = -1;
+                            node[a][3] = -1;
+                            node_new[a][0] = 0;
+                            node_new[a][1] = MAX_DIST;
+                            node_new[a][2] = -1;
+                            node_new[a][3] = -1;
                         }
-                        Set_Cal_Route(ip_src, ip_dst, out_sw_port, redis_ip);
-                        memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                        for(a = 0; a < MAX_NUM; a++)
+                        {
+                            for(b = 0; b < MAX_NUM; b++)
+                            {
+                                matrix_new[a][b] = matrix_ori[a][b];
+                            }
+                        }
+
+                        // Dijkstra 计算两点间距离
+                        node[sw1][0] = 1;
+                        node[sw1][1] = 0;
+                        for(a = 0; a < MAX_NUM; a++)
+                        {
+                            if(node[a][0] == 0 && matrix_new[sw1][a] < MAX_DIST)
+                            {
+                                node[a][1] = matrix_new[sw1][a];
+                                node[a][2] = sw1;
+                            }
+                        }
+                        for(a = 0; a < MAX_NUM; a++)
+                        {
+                            mindist = MAX_DIST;
+                            minnode = -1;
+                            for(b = 0; b < MAX_NUM; b++)
+                            {
+                                if(node[b][0] != 0) continue;
+                                if(node[b][1] < mindist)
+                                {
+                                    mindist = node[b][1];
+                                    minnode = b;
+                                }
+                            }
+
+                            if(minnode == -1) break;
+                            if(minnode == sw2) flag = 1;
+
+                            node[minnode][0] = 1;
+                            for(b = 0; b < MAX_NUM; b++)
+                            {
+                                if(node[b][0] == 0 && node[b][1] > matrix_new[minnode][b] + node[minnode][1] && matrix_new[minnode][b] < MAX_DIST)
+                                {
+                                    node[b][1] = matrix_new[minnode][b] + node[minnode][1];
+                                    node[b][2] = minnode;
+                                }
+                            }
+                        }
+
+                        // 生成残差图
+                        if(flag == 1)
+                        {
+                            for(a = 0; a < MAX_NUM; a++)
+                            {
+                                for(b = 0; b < MAX_NUM; b++)
+                                {
+                                    matrix_new[a][b] = matrix_new[a][b] + node[a][1] - node[b][1];
+                                }
+                            }
+                            curnode = sw2;
+                            prenode = node[curnode][2];
+                            c = 0;
+                            path[c++] = curnode;
+                            while(prenode != -1)
+                            {
+                                node[prenode][3] = curnode;
+                                matrix_new[curnode][prenode] = 0;
+                                matrix_new[prenode][curnode] = MAX_DIST;
+                                curnode = prenode;
+                                prenode = node[curnode][2];
+                                path[c++] = curnode;
+                            }
+                            
+                            printf("db%d - db%d: \n", sw1, sw2);
+                            c = 0;
+                            printf("\tpath: ");
+                            while(path[c] != -1)
+                            {
+                                printf("%d ", path[c++]);
+                            }
+                            printf("\n");
+
+                            // 第二次Dijkstra计算
+                            node_new[sw1][0] = 1;
+                            node_new[sw1][1] = 0;
+                            for(a = 0; a < MAX_NUM; a++)
+                            {
+                                if(node_new[a][0] == 0 && matrix_new[sw1][a] != MAX_DIST)
+                                {
+                                    node_new[a][1] = matrix_new[sw1][a];
+                                    node_new[a][2] = sw1;
+                                }
+                            }
+                            for(a = 0; a < MAX_NUM; a++)
+                            {
+                                mindist = MAX_DIST;
+                                minnode = -1;
+                                for(b = 0; b < MAX_NUM; b++)
+                                {
+                                    if(node_new[b][0] != 0) continue;
+                                    if(node_new[b][1] < mindist)
+                                    {
+                                        mindist = node_new[b][1];
+                                        minnode = b;
+                                    }
+                                }
+
+                                if(minnode == -1) break;
+                                if(minnode == sw2) break;
+
+                                node_new[minnode][0] = 1;
+                                for(b = 0; b < MAX_NUM; b++)
+                                {
+                                    if(node_new[b][0] == 0 && node_new[b][1] > matrix_new[minnode][b] + node_new[minnode][1] && matrix_new[minnode][b] != MAX_DIST)
+                                    {
+                                        node_new[b][1] = matrix_new[minnode][b] + node_new[minnode][1];
+                                        node_new[b][2] = minnode;
+                                    }
+                                }
+                            }
+                            if(minnode == sw2)
+                            {
+                                curnode = sw2;
+                                prenode = node_new[curnode][2];
+                                c = 0;
+                                path_new[c++] = curnode;
+                                while(prenode != -1)
+                                {
+                                    node_new[prenode][3] = curnode;
+                                    curnode = prenode;
+                                    prenode = node_new[curnode][2];
+                                    path_new[c++] = curnode;
+                                }
+
+                                c = 0;
+                                printf("\tpath_new: ");
+                                while(path_new[c] != -1)
+                                {
+                                    printf("%d ", path_new[c++]);
+                                }
+                                printf("\n");
+
+                                // 比较两条路径，删除重复部分
+                                a = 0;
+                                while(path[a+1] != sw1)
+                                {
+                                    b = 0;
+                                    while(path_new[b+1] != sw1)
+                                    {
+                                        if(path_new[b] == path[a+1] && path_new[b+1] == path[a])
+                                        {
+                                            node[path[a+1]][3] = -1;
+                                            node_new[path[a]][3] = -1;
+                                            // printf("del overlap link sw%d - sw%d\n", path[i+1], path[i]);
+                                        }
+                                        b++;
+                                    }
+                                    a++;
+                                }
+
+                                // 重组路径
+                                path_1[0] = sw1;
+                                path_1[1] = node[sw1][3];
+                                curnode = path_1[1];
+                                c = 2;
+                                while(curnode != sw2)
+                                {
+                                    if(node[curnode][3] == -1)
+                                    {
+                                        path_1[c] = node_new[curnode][3];
+                                        node_new[curnode][3] = -1;
+                                    }  
+                                    else
+                                    {
+                                        path_1[c] = node[curnode][3];
+                                        node[curnode][3] = -1;
+                                    }
+                                    curnode = path_1[c];
+                                    c++;
+                                }
+                                path_2[0] = sw1;
+                                path_2[1] = node_new[sw1][3];
+                                curnode = path_2[1];
+                                c = 2;
+                                while(curnode != sw2)
+                                {
+                                    if(node[curnode][3] == -1)
+                                        path_2[c] = node_new[curnode][3];
+                                    else
+                                        path_2[c] = node[curnode][3];
+                                    curnode = path_2[c];
+                                    c++;
+                                }
+                                
+                                printf("db%d - db%d: \n", sw1, sw2);
+                                c = 0;
+                                printf("\tpath_1: ");
+                                while(path_1[c] != -1)
+                                {
+                                    printf("%d ", path_1[c++]);
+                                }
+                                printf("\n");
+                                c = 0;
+                                printf("\tpath_2: ");
+                                while(path_2[c] != -1)
+                                {
+                                    printf("%d ", path_2[c++]);
+                                }
+                                printf("\n\n");
+
+                                // 向数据库写入2条新路由
+                                c = 0;
+                                while(path_1[c+1] != -1)
+                                {
+                                    snprintf(sw_port, 8, "%03d%03d ", path_1[c], path_1[c+1]);
+                                    strncpy(out_sw_port + c * 7, sw_port, 7);
+                                    c++;
+                                }
+                                Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
+                                memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                                // 间隔5s
+                                sleep(5);
+                                c = 0;
+                                while(path_2[c+1] != -1)
+                                {
+                                    snprintf(sw_port, 8, "%03d%03d ", path_2[c], path_2[c+1]);
+                                    strncpy(out_sw_port + c * 7, sw_port, 7);
+                                    c++;
+                                }
+                                Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, redis_ip);
+                                memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                            }
+                            else
+                            {
+                                printf("dijkstra_2 failed\n");
+                                // 向数据库写入1条新路由
+                                c = 0;
+                                while(path[c+1] != -1) c++;
+                                a = 0;
+                                while(c > 0)
+                                {
+                                    snprintf(sw_port, 8, "%03d%03d ", path[c], path[c-1]);
+                                    strncpy(out_sw_port + a * 7, sw_port, 7);
+                                    c--;
+                                    a++;
+                                }
+                                Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
+                                memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                            }
+                        }
+                        else
+                        {
+                            printf("Suurballe failed\n");
+                        }
+                        printf("finish to run Suurballe\n");  
+                    }
+                    // 判断是 正在工作的 c2d控制通道路由
+                    // 确定源是本区域的控制器，需要判断目的是本地数据库
+                    else if( (strstr(ip_src, "44") == NULL) && (strstr(ip_dst, "44") != NULL) && (sw2 == db_id) )
+                    {
+                        // 优雅关闭tcp套接字，通知控制器切换数据库
+                        if(flag_fd[sw1] == 0)
+                        {
+                            printf("wait to shutdown ctrl_%d socket_%d\n", sw1, fd[sw1]);
+                            // shutdown(fd[sw1], SHUT_WR);
+                            fd_close[fd_close_num++] = fd[sw1];
+                            flag_fd[sw1] = 1;
+                        }
+                    }
+                    // 判断是 正在工作的 d2c控制通道路由
+                    // 确定源是本地数据库，需要判断目的是本区域控制器
+                    else if( (strstr(ip_src, "44") != NULL) && (strstr(ip_dst, "44") == NULL) && (Get_Ctrl_Conn_Db((uint32_t)sw2, redis_ip) == db_id) )
+                    {
+                        // 优雅关闭tcp套接字，通知控制器切换数据库
+                        if(flag_fd[sw2] == 0)
+                        {
+                            printf("wait to shutdown ctrl_%d socket_%d\n", sw2, fd[sw2]);
+                            // shutdown(fd[sw2], SHUT_WR);
+                            fd_close[fd_close_num++] = fd[sw2];
+                            flag_fd[sw2] = 1;
+                        }
+                    }
+                    else
+                    {
+                        // 向数据库写入新路由
+                        if(matrix[sw1][sw2] != MAX_DIST)
+                        {
+                            hop = 0;
+                            nextsw[hop++] = sw1;
+                            out(sw1, sw2, &route[0][0], nextsw, &hop);
+                            nextsw[hop] = sw2;
+
+                            for(j = 0; j < hop; j++)
+                            {
+                                snprintf(sw_port, 8, "%03d%03d ", nextsw[j], nextsw[j+1]);
+                                strncpy(out_sw_port + j * 7, sw_port, 7);
+                            }
+                            Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
+                            memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                        }
+                    }  
+                }
+            }
+            
+            // 等待其他路由调整完成之后，通知相应控制器切换数据库，最后调整c2d工作路由
+            sleep(7);
+            for(i = 0; i < fd_close_num; i++)
+            {
+                printf("shutdown socket %d\n", fd_close[i]);
+                shutdown(fd_close[i], SHUT_WR);
+                // close(fd_close[i]);
+            }
+            memset(fd_close, 0, sizeof(fd_close));
+            fd_close_num = 0;
+            for(i = 0; i < MAX_NUM; i++)
+            {
+                if(flag_fd[i] == 1)
+                {
+                    fd[i] = 0;
+                }
+            }
+            memset(flag_fd, 0, sizeof(flag_fd));
+            
+            for(k = 0; k < reply2->elements; k++)
+            {
+                printf("route entry: %s\n",reply2->element[k]->str);
+                strncpy(ip_src_two, reply2->element[k]->str+6, 2);
+                sw = strtoi(ip_src_two, 2) - 1;
+                ctrl_id = sw;
+                db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
+
+                // 判断起点属于本区域交换机，删除旧的链路-路由映射，向数据库写入新路由
+                // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
+                if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
+                {             
+                    strncpy(ip_src, reply2->element[k]->str, IP_LEN);
+                    strncpy(ip_dst, reply2->element[k]->str + IP_LEN, IP_LEN);
+                    num = reply2->element[k]->str[IP_LEN*2] - '0';
+                    // Del_Rt_Set(slot, ip_src, ip_dst, num, redis_ip);
+                    
+                    // 判断是 正在工作的 c2d控制通道路由
+                    // 确定源是本区域的控制器，需要判断目的是本地数据库
+                    if( (strstr(ip_src, "44") == NULL) && (strstr(ip_dst, "44") != NULL) && (sw2 == db_id) )
+                    {
+                        // 向数据库写入新路由
+                        if(matrix[sw1][sw2] != MAX_DIST)
+                        {
+                            hop = 0;
+                            nextsw[hop++] = sw1;
+                            out(sw1, sw2, &route[0][0], nextsw, &hop);
+                            nextsw[hop] = sw2;
+
+                            for(j = 0; j < hop; j++)
+                            {
+                                snprintf(sw_port, 8, "%03d%03d ", nextsw[j], nextsw[j+1]);
+                                strncpy(out_sw_port + j * 7, sw_port, 7);
+                            }
+                            Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
+                            memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                        }
+                    }
+                    // 判断是 正在工作的 d2c控制通道路由
+                    // 确定源是本地数据库，需要判断目的是本区域控制器
+                    if( (strstr(ip_src, "44") != NULL) && (strstr(ip_dst, "44") == NULL) && (Get_Ctrl_Conn_Db((uint32_t)sw2, redis_ip) == db_id) )
+                    {
+                        // 向数据库写入新路由
+                        if(matrix[sw1][sw2] != MAX_DIST)
+                        {
+                            hop = 0;
+                            nextsw[hop++] = sw1;
+                            out(sw1, sw2, &route[0][0], nextsw, &hop);
+                            nextsw[hop] = sw2;
+
+                            for(j = 0; j < hop; j++)
+                            {
+                                snprintf(sw_port, 8, "%03d%03d ", nextsw[j], nextsw[j+1]);
+                                strncpy(out_sw_port + j * 7, sw_port, 7);
+                            }
+                            Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
+                            memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                        }
                     }
                 }
             }
+
             freeReplyObject(reply2);
             redisFree(context2);
-        }
-
-        sleep(2);
-        for(i = 0; i < fd_close_num; i++)
-        {
-            close(fd_close[i]);
         }
     }
   
@@ -418,6 +829,222 @@ void *udpconnect(void *redis_ip)
     }
 }
 
+// 用于d2d线程传参的结构体
+struct para
+{
+    void *obj;
+    void *redis_ip;
+};
+
+void *d2d_thread(void *arg)
+{
+    struct para *d2d_para;
+    d2d_para = (struct para *)arg;
+    char *obj = (*d2d_para).obj;
+    char *redis_ip = (*d2d_para).redis_ip;
+    int num = obj[IP_LEN*2+7] - '0';
+    printf("obj = %s, redis_ip = %s, num = %d\n", obj, redis_ip, num);
+
+    char cmd[CMD_MAX_LENGHT] = {0};
+    redisContext *context;
+    redisReply *reply;
+    int i = 0;
+    int ctrl_id = 0; // 记录控制器ID
+    int db_id = 0;
+    int sw, sw_pre = 999;
+    int port = 999;
+    long cfd = -1;
+    int ret = -1;
+    char buf[BUFSIZE] = {0};
+    char ip_src[IP_LEN+1] = {0,};
+    char ip_dst[IP_LEN+1] = {0,};
+    int port2 = 999; // 对于d2d路由，源节点的该字段存储第二个出端口，非源节点的该字段存储入端口
+    strncpy(ip_src, &obj[6], IP_LEN);
+    strncpy(ip_dst, &obj[6 + IP_LEN], IP_LEN);
+    printf("ip_src = %s, ip_dst = %s\n", ip_src, ip_dst);
+    int outport_src = 999; // 记录源节点的第一条路由的出端口
+
+    // 等待各数据库收到相应的新增路由之后，再分发路由通告修改流表
+    sleep(5);
+
+    if(num == 1) // 直接下发
+    {
+        snprintf(cmd, CMD_MAX_LENGHT, "lrange %s 0 -1", obj);
+        context = redisConnect(redis_ip, REDIS_SERVER_PORT);
+        if (context->err)
+        { 
+            printf("Error: %s\n", context->errstr);
+            redisFree(context);
+            return NULL;
+        }
+        printf("connect redis server success\n");
+        reply = (redisReply *)redisCommand(context, cmd);
+        if (reply == NULL)
+        {
+            printf("execute command:%s failure\n", cmd);
+            redisFree(context);
+            return NULL;
+        }
+        if(reply->elements == 0) 
+        {
+            freeReplyObject(reply);
+            redisFree(context);
+            printf("route lookup failed\n");
+            return NULL;
+        }
+        for(i = 0; i < reply->elements; i++)
+        {
+            sw = atoi(reply->element[i]->str)/1000;
+            port = atoi(reply->element[i]->str)%1000;
+            // printf("sw:%u, outport:%u\n", sw, port);
+            ctrl_id = sw;
+            db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
+
+            // 判断该出端口属于本区域交换机，向对应控制器发送通告
+            // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
+            if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
+            {
+                cfd = fd[ctrl_id]; 
+                // printf("cfd:%ld\n", cfd);
+
+                // 入端口
+                port2 = sw_pre;
+                // add route to routes set <-> link
+                Add_Rt_Set((uint32_t)sw, (uint32_t)port, ip_src, ip_dst, num, redis_ip);
+
+                // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3
+                memset(buf, 0, BUFSIZE);
+                printf("db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
+                snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
+                printf("buf:%s\n",buf);
+                ret = send(cfd, buf, BUFSIZE, 0);
+                if (ret == -1)
+                {
+                    print_err("send route failed", __LINE__, errno);
+                    // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
+                    Add_Wait_Exec(ctrl_id, buf, redis_ip);
+                }
+            }
+            sw_pre = sw;
+        }
+    }
+    else if(num == 2) // 对于源节点，整合两条路径的出端口一起下发
+    {
+        context = redisConnect(redis_ip, REDIS_SERVER_PORT);
+        if (context->err)
+        { 
+            printf("Error: %s\n", context->errstr);
+            redisFree(context);
+            return NULL;
+        }
+        printf("connect redis server success\n");
+        
+        obj[IP_LEN*2+7] = '1';
+        snprintf(cmd, CMD_MAX_LENGHT, "lrange %s 0 -1", obj);
+        reply = (redisReply *)redisCommand(context, cmd);
+        if (reply == NULL)
+        {
+            printf("execute command:%s failure\n", cmd);
+            redisFree(context);
+            return NULL;
+        }
+        if(reply->elements == 0) 
+        {
+            freeReplyObject(reply);
+            redisFree(context);
+            return NULL;
+        }
+        outport_src = atoi(reply->element[0]->str)%1000;
+        freeReplyObject(reply);
+
+        obj[IP_LEN*2+7] = '2';
+        snprintf(cmd, CMD_MAX_LENGHT, "lrange %s 0 -1", obj);
+        reply = (redisReply *)redisCommand(context, cmd);
+        if (reply == NULL)
+        {
+            printf("execute command:%s failure\n", cmd);
+            redisFree(context);
+            return NULL;
+        }
+        if(reply->elements == 0) 
+        {
+            freeReplyObject(reply);
+            redisFree(context);
+            return NULL;
+        }
+
+        sw = atoi(reply->element[0]->str)/1000;
+        port = atoi(reply->element[0]->str)%1000;
+        // printf("sw:%u, outport:%u\n", sw, port);
+        ctrl_id = sw;
+        db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
+        // 判断该出端口属于本区域交换机，向对应控制器发送通告
+        // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
+        if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
+        {
+            cfd = fd[ctrl_id]; 
+            port2 = outport_src;
+            // add route to routes set <-> link
+            Add_Rt_Set((uint32_t)sw, (uint32_t)port, ip_src, ip_dst, num, redis_ip);
+            // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3(port2字段用于承载第二个出端口)
+            memset(buf, 0, BUFSIZE);
+            printf("源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
+            snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
+            printf("buf:%s\n",buf);
+            ret = send(cfd, buf, BUFSIZE, 0);
+            if (ret == -1)
+            {
+                print_err("send route failed", __LINE__, errno);
+                // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
+                Add_Wait_Exec(ctrl_id, buf, redis_ip);
+            }
+        }
+        sw_pre = sw;
+
+        // 非源节点正常下发
+        for(i = 1; i < reply->elements; i++)
+        {
+            sw = atoi(reply->element[i]->str)/1000;
+            port = atoi(reply->element[i]->str)%1000;
+            // printf("sw:%u, outport:%u\n", sw, port);
+            ctrl_id = sw;
+            db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
+
+            // 判断该出端口属于本区域交换机，向对应控制器发送通告
+            // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
+            if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
+            {
+                cfd = fd[ctrl_id]; 
+                // printf("cfd:%ld\n", cfd);
+
+                // 入端口
+                port2 = sw_pre;
+                // add route to routes set <-> link
+                Add_Rt_Set((uint32_t)sw, (uint32_t)port, ip_src, ip_dst, 2, redis_ip);
+                
+                // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3(port2字段用于承载入端口)
+                memset(buf, 0, BUFSIZE);
+                printf("非源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
+                snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
+                printf("buf:%s\n",buf);
+                ret = send(cfd, buf, BUFSIZE, 0);
+                if (ret == -1)
+                {
+                    print_err("send route failed", __LINE__, errno);
+                    // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
+                    Add_Wait_Exec(ctrl_id, buf, redis_ip);
+                }
+            }
+            sw_pre = sw;
+        }
+    }
+
+    free(arg);
+    freeReplyObject(reply);
+    redisFree(context);
+    return NULL;
+}
+
 // 解析传入的路由条目，向相应的控制器发送新增流表项通告
 int route_add(char *obj, char *redis_ip)
 {
@@ -432,12 +1059,31 @@ int route_add(char *obj, char *redis_ip)
     long cfd = -1;
     int ret = -1;
     char buf[BUFSIZE] = {0};
+    int num = 0;
+    pthread_t pid;
 
     char ip_src[IP_LEN+1] = {0,};
     char ip_dst[IP_LEN+1] = {0,};
-    int timeout = 0;
+    int port2 = 999;
     strncpy(ip_src, &obj[6], IP_LEN);
     strncpy(ip_dst, &obj[6 + IP_LEN], IP_LEN);
+    num = obj[IP_LEN*2+7] - '0';
+
+    // 判断是d2d路由
+    if(((strstr(ip_dst, "44") != NULL) && (strstr(ip_src, "44") != NULL)))
+    {
+        struct para *d2d_para = malloc(sizeof(struct para));
+        d2d_para->obj = obj;
+        d2d_para->redis_ip = redis_ip;
+        //创建子线程，汇总两条d2d路由信息后下发
+        ret = pthread_create(&pid, NULL, d2d_thread, d2d_para);
+        if (ret == -1) 
+        {
+            print_err("create d2d_thread failed", __LINE__, errno); 
+        }
+        printf("create d2d_thread success\n");
+        return 0;
+    }
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "lrange %s 0 -1", obj);
@@ -485,15 +1131,15 @@ int route_add(char *obj, char *redis_ip)
             cfd = fd[ctrl_id]; 
             // printf("cfd:%ld\n", cfd);
 
-            // 不设置定时
-            timeout = 0;
+            // 初始化999表示没有第二个出端口
+            port2 = 999;
             // add route to routes set <-> link
-            Add_Rt_Set((uint32_t)sw, (uint32_t)port, ip_src, ip_dst, redis_ip);
+            Add_Rt_Set((uint32_t)sw, (uint32_t)port, ip_src, ip_dst, num, redis_ip);
 
-            // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,timeout:3
+            // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3
             memset(buf, 0, BUFSIZE);
-            printf("db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, timeout:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, timeout);
-            snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, timeout);
+            printf("db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
+            snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
             printf("buf:%s\n",buf);
             ret = send(cfd, buf, BUFSIZE, 0);
             if (ret == -1)
@@ -507,6 +1153,7 @@ int route_add(char *obj, char *redis_ip)
 
     freeReplyObject(reply);
     redisFree(context);
+    free(obj);
     return 0;
 }
 
@@ -517,7 +1164,7 @@ int route_del(char *obj, int index, char *redis_ip)
     char cmd[CMD_MAX_LENGHT] = {0};
     redisContext *context;
     redisReply *reply;
-    int i, j, k = 0;
+    int i, j, k, a, b, c = 0;
     int ctrl_id = 0; // 记录控制器ID
     int db_id = 0;
     uint32_t sw1, sw2 = 0;
@@ -529,6 +1176,7 @@ int route_del(char *obj, int index, char *redis_ip)
     char buf[BUFSIZE] = {0,};
     char ip_src[IP_LEN+1] = {0,};
     char ip_dst[IP_LEN+1] = {0,};
+    int num = 1; // 路由序号
     char ip_src_two[IP_LEN/4+1] = {0,}; // ip_src最后两位
     char ip_dst_two[IP_LEN/4+1] = {0,}; // ip_dst最后两位
 
@@ -537,7 +1185,11 @@ int route_del(char *obj, int index, char *redis_ip)
     // int slot = atoi(slot_str);
 
     int matrix[MAX_NUM][MAX_NUM];
-    memset(matrix, 0x3f, sizeof(matrix)); // 记录拓扑
+    memset(matrix, 0x3f, sizeof(matrix)); // 记录Floyd距离
+    int matrix_ori[MAX_NUM][MAX_NUM];
+    memset(matrix_ori, 0x3f, sizeof(matrix_ori)); // 记录原始拓扑
+    int matrix_new[MAX_NUM][MAX_NUM];
+    memset(matrix_new, 0x3f, sizeof(matrix_new)); // 记录用于Suurballe计算的拓扑
     uint32_t node1, node2 = 0;
     uint64_t delay = 0;
     int route[MAX_NUM][MAX_NUM]; // 记录松弛节点
@@ -546,6 +1198,18 @@ int route_del(char *obj, int index, char *redis_ip)
     int hop = 0;
     char out_sw_port[CMD_MAX_LENGHT] = {0,}; // 存储出端口列表
     char sw_port[8] = {0,}; // 存储出端口
+
+    int mindist = 0;
+    int minnode = -1;
+    int curnode = -1;
+    int prenode = -1;
+    int flag = 0; // flag=1表示第一次dijkstra计算成功
+    int node[MAX_NUM][4] = {0,}; // node[x][0]标记该节点是否已经加入最短路, node[x][1]表示到源节点到该节点的最短距离, node[x][2]记录该节点在最短路径上的前驱节点, node[x][4]记录该节点在最短路径上的后继节点
+    int node_new[MAX_NUM][4] = {0,}; // 用于第二次dijkstra计算
+    int path[MAX_NUM] = {0,}; // 第一次dijkstra的结果
+    int path_new[MAX_NUM] = {0,}; // 第二次dijkstra的结果
+    int path_1[MAX_NUM] = {0,}; // 链路分离路径1
+    int path_2[MAX_NUM] = {0,}; // 链路分离路径2
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "lindex %s %d", obj, index);
@@ -585,6 +1249,7 @@ int route_del(char *obj, int index, char *redis_ip)
     redisFree(context);
 
     // 读取拓扑
+    printf("start to read topo\n");
     snprintf(cmd, CMD_MAX_LENGHT, "hgetall real_topo");
     context = redisConnect(redis_ip, REDIS_SERVER_PORT);
     reply = (redisReply *)redisCommand(context, cmd);
@@ -606,12 +1271,12 @@ int route_del(char *obj, int index, char *redis_ip)
         {
             delay = atol(reply->element[i]->str);
             if(node1 != fail_sw2 && node2 != fail_sw2)
-                matrix[node1][node2] = delay;
+                matrix_ori[node1][node2] = delay;
         }
     }
     for(i = 0; i < MAX_NUM; i++)
     {
-        matrix[i][i] = 0;
+        matrix_ori[i][i] = 0;
     }
     freeReplyObject(reply);
     redisFree(context);
@@ -639,7 +1304,7 @@ int route_del(char *obj, int index, char *redis_ip)
             sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
             sw2 = (uint32_t)(sw & 0x00000000ffffffff);
             printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
-            matrix[sw1][sw2] = MAX_DIST;
+            matrix_ori[sw1][sw2] = MAX_DIST;
         }
     }
     freeReplyObject(reply);
@@ -647,6 +1312,13 @@ int route_del(char *obj, int index, char *redis_ip)
 
     // Floyd 计算任意两点间距离
     printf("start to run Floyd\n");
+    for(i = 0; i < MAX_NUM; i++)
+    {
+        for(j = 0; j < MAX_NUM; j++)
+        {
+            matrix[i][j] = matrix_ori[i][j];
+        }
+    }
     for(k = 0; k < MAX_NUM; k++)
     {//从0开始遍历每一个中间节点，代表允许经过的结点编号<=k 
         for(i = 0; i < MAX_NUM; i++)
@@ -688,7 +1360,7 @@ int route_del(char *obj, int index, char *redis_ip)
     }
 
     // 输出查询结果
-    printf("entry num = %lu\n",reply->elements);
+    printf("fail route num = %lu\n",reply->elements);
     if(reply->elements == 0) 
     {
         freeReplyObject(reply);
@@ -709,55 +1381,364 @@ int route_del(char *obj, int index, char *redis_ip)
         {
             strncpy(ip_src, reply->element[i]->str, IP_LEN);
             strncpy(ip_dst, reply->element[i]->str + IP_LEN, IP_LEN);
-            
-            // 判断是正在工作的控制通道路由
-            if(strstr(ip_dst, redis_ip) != NULL)
-            {
-                // 关闭tcp套接字，通知控制器切换数据库
-                close(fd[ctrl_id]);
-            }
-            
-            cfd = fd[ctrl_id];
-            // printf("cfd:%ld\n", cfd);
-            // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,timeout:3
-            memset(buf, 0, BUFSIZE);
-            snprintf(buf, BUFSIZE, "%d%03ld%s%03d%03d", ROUTE_DEL, sw, reply->element[i]->str, 0, 0);
-            ret = send(cfd, buf, BUFSIZE, 0);
-            if (ret == -1)
-            {
-                print_err("send route failed", __LINE__, errno);
-                // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
-                Add_Wait_Exec(ctrl_id, buf, redis_ip);
-            }
-            if(strstr(reply->element[2]->str, "rpush") != NULL)
+            num = reply->element[i]->str[IP_LEN*2] - '0';
+            Del_Rt_Set(slot, ip_src, ip_dst, num, redis_ip);
 
-            // 删除该路由的链路映射
-            Del_Rt_Set(slot, ip_src, ip_dst, redis_ip);
-
-            // 向数据库写入新路由
             strncpy(ip_dst_two, reply->element[i]->str+IP_LEN+6, 2);
             sw1 = strtoi(ip_src_two, 2) - 1;
             sw2 = strtoi(ip_dst_two, 2) - 1;
-            if(matrix[sw1][sw2] != MAX_DIST)
+            
+            // 判断是d2d路由
+            if(((strstr(ip_dst, "44") != NULL) && (strstr(ip_src, "44") != NULL)))
             {
-                hop = 0;
-                nextsw[hop++] = sw1;
-                out(sw1, sw2, &route[0][0], nextsw, &hop);
-                nextsw[hop] = sw2;
+                // 把两条d2d路由的链路映射都删掉
+                if(num == 1) Del_Rt_Set(slot, ip_src, ip_dst, 2, redis_ip);
+                else Del_Rt_Set(slot, ip_src, ip_dst, 1, redis_ip);
 
-                for(j = 0; j < hop; j++)
+                // Suurballe 计算两点之间的路由
+                // 初始化
+                printf("start to run Suurballe\n");
+                mindist = 0;
+                minnode = -1;
+                curnode = -1;
+                prenode = -1;
+                flag = 0; 
+                memset(path, -1, sizeof(path));
+                memset(path_new, -1, sizeof(path_new));
+                memset(path_1, -1, sizeof(path_1));
+                memset(path_2, -1, sizeof(path_2));
+                for(a = 0; a < MAX_NUM; a++)
                 {
-                    snprintf(sw_port, 8, "%03d%03d ", nextsw[j], nextsw[j+1]);
-                    strncpy(out_sw_port + j * 7, sw_port, 7);
+                    node[a][0] = 0;
+                    node[a][1] = MAX_DIST;
+                    node[a][2] = -1;
+                    node[a][3] = -1;
+                    node_new[a][0] = 0;
+                    node_new[a][1] = MAX_DIST;
+                    node_new[a][2] = -1;
+                    node_new[a][3] = -1;
                 }
-                Set_Cal_Route(ip_src, ip_dst, out_sw_port, redis_ip);
-                memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                for(a = 0; a < MAX_NUM; a++)
+                {
+                    for(b = 0; b < MAX_NUM; b++)
+                    {
+                        matrix_new[a][b] = matrix_ori[a][b];
+                    }
+                }
+
+                // Dijkstra 计算两点间距离
+                node[sw1][0] = 1;
+                node[sw1][1] = 0;
+                for(a = 0; a < MAX_NUM; a++)
+                {
+                    if(node[a][0] == 0 && matrix_new[sw1][a] < MAX_DIST)
+                    {
+                        node[a][1] = matrix_new[sw1][a];
+                        node[a][2] = sw1;
+                    }
+                }
+                for(a = 0; a < MAX_NUM; a++)
+                {
+                    mindist = MAX_DIST;
+                    minnode = -1;
+                    for(b = 0; b < MAX_NUM; b++)
+                    {
+                        if(node[b][0] != 0) continue;
+                        if(node[b][1] < mindist)
+                        {
+                            mindist = node[b][1];
+                            minnode = b;
+                        }
+                    }
+
+                    if(minnode == -1) break;
+                    if(minnode == sw2) flag = 1;
+
+                    node[minnode][0] = 1;
+                    for(b = 0; b < MAX_NUM; b++)
+                    {
+                        if(node[b][0] == 0 && node[b][1] > matrix_new[minnode][b] + node[minnode][1] && matrix_new[minnode][b] < MAX_DIST)
+                        {
+                            node[b][1] = matrix_new[minnode][b] + node[minnode][1];
+                            node[b][2] = minnode;
+                        }
+                    }
+                }
+
+                // 生成残差图
+                if(flag == 1)
+                {
+                    for(a = 0; a < MAX_NUM; a++)
+                    {
+                        for(b = 0; b < MAX_NUM; b++)
+                        {
+                            matrix_new[a][b] = matrix_new[a][b] + node[a][1] - node[b][1];
+                        }
+                    }
+                    curnode = sw2;
+                    prenode = node[curnode][2];
+                    c = 0;
+                    path[c++] = curnode;
+                    while(prenode != -1)
+                    {
+                        node[prenode][3] = curnode;
+                        matrix_new[curnode][prenode] = 0;
+                        matrix_new[prenode][curnode] = MAX_DIST;
+                        curnode = prenode;
+                        prenode = node[curnode][2];
+                        path[c++] = curnode;
+                    }
+                    
+                    printf("db%d - db%d: \n", sw1, sw2);
+                    c = 0;
+                    printf("\tpath: ");
+                    while(path[c] != -1)
+                    {
+                        printf("%d ", path[c++]);
+                    }
+                    printf("\n");
+
+                    // 第二次Dijkstra计算
+                    node_new[sw1][0] = 1;
+                    node_new[sw1][1] = 0;
+                    for(a = 0; a < MAX_NUM; a++)
+                    {
+                        if(node_new[a][0] == 0 && matrix_new[sw1][a] < MAX_DIST)
+                        {
+                            node_new[a][1] = matrix_new[sw1][a];
+                            node_new[a][2] = sw1;
+                        }
+                    }
+                    for(a = 0; a < MAX_NUM; a++)
+                    {
+                        mindist = MAX_DIST;
+                        minnode = -1;
+                        for(b = 0; b < MAX_NUM; b++)
+                        {
+                            if(node_new[b][0] != 0) continue;
+                            if(node_new[b][1] < mindist)
+                            {
+                                mindist = node_new[b][1];
+                                minnode = b;
+                            }
+                        }
+
+                        if(minnode == -1) break;
+                        if(minnode == sw2) break;
+
+                        node_new[minnode][0] = 1;
+                        for(b = 0; b < MAX_NUM; b++)
+                        {
+                            if(node_new[b][0] == 0 && node_new[b][1] > matrix_new[minnode][b] + node_new[minnode][1] && matrix_new[minnode][b] < MAX_DIST)
+                            {
+                                node_new[b][1] = matrix_new[minnode][b] + node_new[minnode][1];
+                                node_new[b][2] = minnode;
+                            }
+                        }
+                    }
+                    if(minnode == sw2)
+                    {
+                        curnode = sw2;
+                        prenode = node_new[curnode][2];
+                        c = 0;
+                        path_new[c++] = curnode;
+                        while(prenode != -1)
+                        {
+                            node_new[prenode][3] = curnode;
+                            curnode = prenode;
+                            prenode = node_new[curnode][2];
+                            path_new[c++] = curnode;
+                        }
+
+                        c = 0;
+                        printf("\tpath_new: ");
+                        while(path_new[c] != -1)
+                        {
+                            printf("%d ", path_new[c++]);
+                        }
+                        printf("\n");
+
+                        // 比较两条路径，删除重复部分
+                        a = 0;
+                        while(path[a+1] != sw1)
+                        {
+                            b = 0;
+                            while(path_new[b+1] != sw1)
+                            {
+                                if(path_new[b] == path[a+1] && path_new[b+1] == path[a])
+                                {
+                                    node[path[a+1]][3] = -1;
+                                    node_new[path[a]][3] = -1;
+                                    // printf("del overlap link sw%d - sw%d\n", path[i+1], path[i]);
+                                }
+                                b++;
+                            }
+                            a++;
+                        }
+
+                        // 重组路径
+                        path_1[0] = sw1;
+                        path_1[1] = node[sw1][3];
+                        curnode = path_1[1];
+                        c = 2;
+                        while(curnode != sw2)
+                        {
+                            if(node[curnode][3] == -1)
+                            {
+                                path_1[c] = node_new[curnode][3];
+                                node_new[curnode][3] = -1;
+                            }
+                            else
+                            {
+                                path_1[c] = node[curnode][3];
+                                node[curnode][3] = -1;
+                            }
+                            curnode = path_1[c];
+                            c++;
+                        }
+                        path_2[0] = sw1;
+                        path_2[1] = node_new[sw1][3];
+                        curnode = path_2[1];
+                        c = 2;
+                        while(curnode != sw2)
+                        {
+                            if(node[curnode][3] == -1)
+                                path_2[c] = node_new[curnode][3];
+                            else
+                                path_2[c] = node[curnode][3];
+                            curnode = path_2[c];
+                            c++;
+                        }
+
+                        printf("db%d - db%d: \n", sw1, sw2);
+                        c = 0;
+                        printf("\tpath_1: ");
+                        while(path_1[c] != -1)
+                        {
+                            printf("%d ", path_1[c++]);
+                        }
+                        printf("\n");
+                        c = 0;
+                        printf("\tpath_2: ");
+                        while(path_2[c] != -1)
+                        {
+                            printf("%d ", path_2[c++]);
+                        }
+                        printf("\n\n");
+
+                        // 向数据库写入2条新路由
+                        c = 0;
+                        while(path_1[c+1] != -1)
+                        {
+                            snprintf(sw_port, 8, "%03d%03d ", path_1[c], path_1[c+1]);
+                            strncpy(out_sw_port + c * 7, sw_port, 7);
+                            c++;
+                        }
+                        Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
+                        memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                        // 间隔2s
+                        sleep(2);
+                        c = 0;
+                        while(path_2[c+1] != -1)
+                        {
+                            snprintf(sw_port, 8, "%03d%03d ", path_2[c], path_2[c+1]);
+                            strncpy(out_sw_port + c * 7, sw_port, 7);
+                            c++;
+                        }
+                        Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, redis_ip);
+                        memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                    }
+                    else
+                    {
+                        printf("dijkstra_2 failed\n");
+                        // 向数据库写入1条新路由
+                        c = 0;
+                        while(path[c+1] != -1) c++;
+                        a = 0;
+                        while(c > 0)
+                        {
+                            snprintf(sw_port, 8, "%03d%03d ", path[c], path[c-1]);
+                            strncpy(out_sw_port + a * 7, sw_port, 7);
+                            c--;
+                            a++;
+                        }
+                        Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
+                        memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                    }
+                }
+                else
+                {
+                    printf("Suurballe failed\n");
+                }
+                printf("finish to run Suurballe\n");              
+            }
+            else
+            {
+                // 判断是 正在工作的 c2d控制通道路由
+                // 确定源是本区域的控制器，需要判断目的是本地数据库
+                if( (strstr(ip_src, "44") == NULL) && (strstr(ip_dst, "44") != NULL) && (sw2 == db_id) )
+                {
+                   // 关闭tcp套接字，通知控制器切换数据库
+                    if(fd[sw1] != 0)
+                    {
+                        printf("close socket %d\n", fd[sw1]);
+                        close(fd[sw1]);
+                    }
+                }
+                // 判断是 正在工作的 d2c控制通道路由
+                // 确定源是本地数据库，需要判断目的是本区域控制器
+                if( (strstr(ip_src, "44") != NULL) && (strstr(ip_dst, "44") == NULL) && (Get_Ctrl_Conn_Db((uint32_t)sw2, redis_ip) == db_id) )
+                {
+                    // 关闭tcp套接字，通知控制器切换数据库
+                    if(fd[sw2] != 0)
+                    {
+                        printf("close socket %d\n", fd[sw2]);
+                        close(fd[sw2]);
+                    }
+                }
+            
+                cfd = fd[ctrl_id];
+                // printf("cfd:%ld\n", cfd);
+                // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3
+                memset(buf, 0, BUFSIZE);
+                snprintf(buf, BUFSIZE, "%d%03ld%s%03d%03d", ROUTE_DEL, sw, reply->element[i]->str, 0, 999);
+                ret = send(cfd, buf, BUFSIZE, 0);
+                if (ret == -1)
+                {
+                    print_err("send route failed", __LINE__, errno);
+                    // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
+                    Add_Wait_Exec(ctrl_id, buf, redis_ip);
+                }
+
+                // 删除该路由的链路映射
+                // Del_Rt_Set(slot, ip_src, ip_dst, 1, redis_ip);
+
+                // 向数据库写入新路由
+                // strncpy(ip_dst_two, reply->element[i]->str+IP_LEN+6, 2);
+                // sw1 = strtoi(ip_src_two, 2) - 1;
+                // sw2 = strtoi(ip_dst_two, 2) - 1;
+                if(matrix[sw1][sw2] != MAX_DIST)
+                {
+                    hop = 0;
+                    nextsw[hop++] = sw1;
+                    out(sw1, sw2, &route[0][0], nextsw, &hop);
+                    nextsw[hop] = sw2;
+
+                    for(j = 0; j < hop; j++)
+                    {
+                        snprintf(sw_port, 8, "%03d%03d ", nextsw[j], nextsw[j+1]);
+                        strncpy(out_sw_port + j * 7, sw_port, 7);
+                    }
+                    Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
+                    memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                }
             }
         }
     }
 
     freeReplyObject(reply);
     redisFree(context);
+    free(obj);
     return 0;
 }
 
@@ -766,8 +1747,13 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
 {
     int i = 0;
     redisReply *reply = (redisReply*)r;
+    char *reply_str = malloc(sizeof(char)*26);
+    for(i = 0; i < 26; i++)
+    {
+        reply_str[i] = '\0';
+    }
     if (reply == NULL) return;
-    char reply_str[26] = {0,};
+
     char ip_two[IP_LEN/4+1] = {0,}; // redis_ip最后两位
     int redis_id = -1;
 
@@ -796,8 +1782,7 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
     // 订阅接收到的消息是一个带四元素的数组
     if (reply->type == REDIS_REPLY_ARRAY && reply->elements == 4)
     {
-        printf("Recieved message:\n\t(1)channel: %s\n\t(2)option: %s\n\t(3)object: %s\n", 
-                reply->element[1]->str,
+        printf("Recieved message: %s -- %s\n", 
                 reply->element[2]->str,
                 reply->element[3]->str);
 
@@ -807,7 +1792,8 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
             if(strstr(reply->element[3]->str, "calrt") != NULL)
             {
                 // 查询数据库，下发流表项
-                if(route_add(reply->element[3]->str, redis_ip) == -1)
+                strncpy(reply_str, reply->element[3]->str, 24);
+                if(route_add(reply_str, redis_ip) == -1)
                     printf("cal route add failure\n");
                 else
                     printf("cal route add success\n");
@@ -818,7 +1804,8 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
                 // 查询数据库，下发流表项
                 strncpy(ip_two, reply->element[3]->str+10, 2);
                 redis_id = atoi(ip_two);
-                if(route_del(reply->element[3]->str, fail_link_index[redis_id], redis_ip) == -1)
+                strncpy(reply_str, reply->element[3]->str, 24);
+                if(route_del(reply_str, fail_link_index[redis_id], redis_ip) == -1)
                     printf("route del failure\n");
                 else
                     printf("route del success\n");

@@ -87,8 +87,8 @@ RET_RESULT Set_Topo(uint32_t sw1, uint32_t sw2, uint64_t delay, int slot, char* 
 RET_RESULT Add_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip);
 RET_RESULT Del_Real_Topo(uint32_t sw1, uint32_t sw2, char* redis_ip);
 // write default routes(s2s/d2d/c2s/c2d)
-RET_RESULT Set_Dfl_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot, char* redis_ip);
-RET_RESULT Set_Cal_Route(char *ip_src, char *ip_dst, char *out_sw_port, char* redis_ip);
+// RET_RESULT Set_Dfl_Route(char *ip_src, char *ip_dst, char *out_sw_port, int slot, char* redis_ip);
+RET_RESULT Set_Cal_Route(char *ip_src, char *ip_dst, int num, char *out_sw_port, char* redis_ip);
 // RET_RESULT Set_Cal_Fail_Route(char *ip_src, char *ip_dst, char* redis_ip);
 // write links that next slot will be deleted
 RET_RESULT Set_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip);
@@ -96,8 +96,8 @@ RET_RESULT Set_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip);
 //注意：何时清空失效链路列表？下一个时间片
 RET_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int db_id, int slot, char* redis_ip); 
 // write link <-> routes set
-RET_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, char* redis_ip);
-RET_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, char* redis_ip);
+RET_RESULT Add_Rt_Set(uint32_t sw1, uint32_t sw2, char *ip_src, char *ip_dst, int num, char* redis_ip);
+RET_RESULT Del_Rt_Set(int slot, char *ip_src, char *ip_dst, int num, char* redis_ip);
 // RET_RESULT Add_Rt_Set_Time(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char* redis_ip);
 // RET_RESULT Mov_Rt_Set(uint32_t sw1, uint32_t sw2, int slot, char *ip_src, char *ip_dst, char* redis_ip);
 // write fail_link(dfl_set - real_set)
