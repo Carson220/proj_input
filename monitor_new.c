@@ -671,7 +671,7 @@ void *work_thread(void *redis_ip)
                                 ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
                                 memset(ip_dst_thread, 0, sizeof(char));
                                 strncpy(ip_src_thread, ip_src, IP_LEN);
-                                strncpy(ip_dst_thread, ip_src, IP_LEN);
+                                strncpy(ip_dst_thread, ip_dst, IP_LEN);
                                 route_notice(db_id, path_1[0], ip_src_thread, ip_dst_thread, path_1[1], path_2[1], redis_ip);
                             }
                             else
@@ -1728,7 +1728,7 @@ int route_del(char *obj, int index, char *redis_ip)
                         ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
                         memset(ip_dst_thread, 0, sizeof(char));
                         strncpy(ip_src_thread, ip_src, IP_LEN);
-                        strncpy(ip_dst_thread, ip_src, IP_LEN);
+                        strncpy(ip_dst_thread, ip_dst, IP_LEN);
                         route_notice(db_id, path_1[0], ip_src_thread, ip_dst_thread, path_1[1], path_2[1], redis_ip);
                     }
                     else
