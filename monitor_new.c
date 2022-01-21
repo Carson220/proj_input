@@ -120,10 +120,16 @@ void *tcpconnect(void *pth_arg)
 // 用于输出路径，并写入文件
 void out(int node1, int node2, int *route, int *nextsw, int *hop)
 {
+    printf("node1 = %02d, node2 = %02d, hop = %d\n", node1, node2, *hop);
+    printf("*route = %p, *nextsw = %p\n", route, nextsw);
     if(*(route + node1*MAX_NUM + node2) == -1)
+    {
+        printf("route[%02d][%02d] = -1\n", node1, node2);
         return;
+    }
     out(node1, *(route + node1*MAX_NUM + node2), route, nextsw, hop);
     nextsw[(*hop)++] = *(route + node1*MAX_NUM + node2);
+    printf("nextsw[%d] = %d\n", (*hop)-1, *(route + node1*MAX_NUM + node2));
     out(*(route + node1*MAX_NUM + node2), node2, route, nextsw, hop);
 }
 
@@ -149,7 +155,7 @@ void route_notice(int db_id, int sw, char *ip_src, char *ip_dst, int port1, int 
     long cfd = -1;
     char buf[BUFSIZE] = {0};
     int ret = -1;
-    printf("sw:%u, port1:%u, port2:%u\n", sw, port1, port2);
+    // printf("sw:%u, port1:%u, port2:%u\n", sw, port1, port2);
 
     // 等待路由同步到各个数据库之后再下发
     sleep(5);
@@ -157,13 +163,13 @@ void route_notice(int db_id, int sw, char *ip_src, char *ip_dst, int port1, int 
 
     // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3(port2字段用于承载第二个出端口)
     memset(buf, 0, BUFSIZE);
-    printf("源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, sw, sw, ip_src, ip_dst, port1, port2);
+    printf("\t\t\t源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, sw, sw, ip_src, ip_dst, port1, port2);
     snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port1, port2);
-    printf("buf:%s\n",buf);
+    printf("\t\t\tbuf:%s\n",buf);
     ret = send(cfd, buf, BUFSIZE, 0);
     if (ret == -1)
     {
-        print_err("send route failed", __LINE__, errno);
+        print_err("\t\t\tsend route failed", __LINE__, errno);
         // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
         Add_Wait_Exec(sw, buf, redis_ip);
     }
@@ -229,7 +235,7 @@ void *work_thread(void *redis_ip)
     int path_2[MAX_NUM] = {0,}; // 链路分离路径2
 
     // 读取拓扑
-    printf("start to read topo\n");
+    printf("\tstart to read topo\n");
     snprintf(cmd, CMD_MAX_LENGHT, "hgetall real_topo");
     context = redisConnect(redis_ip, REDIS_SERVER_PORT);
     reply = (redisReply *)redisCommand(context, cmd);
@@ -259,30 +265,30 @@ void *work_thread(void *redis_ip)
     }
     freeReplyObject(reply);
     redisFree(context);
-    printf("finish to read topo\n");
+    printf("\tfinish to read topo\n");
 
     // 去掉下个时间片要删除的链路
-    printf("start to revise topo(del some links)\n");
+    printf("\tstart to revise topo(del some links)\n");
     snprintf(cmd, CMD_MAX_LENGHT, "smembers del_link_%02d", slot);
     context = redisConnect(redis_ip, REDIS_SERVER_PORT);
     if (context->err)
     {
-        printf("Error: %s\n", context->errstr);
+        printf("\tError: %s\n", context->errstr);
         redisFree(context);
         return NULL;
     }
-    printf("connect redis server success\n");
+    // printf("connect redis server success\n");
 
     reply = (redisReply *)redisCommand(context, cmd);
     if (reply != NULL && reply->elements != 0)
     {
-        printf("del_link num = %lu\n",reply->elements);
+        printf("\tdel_link num = %lu\n",reply->elements);
         for(i = 0; i < reply->elements; i++)
         {
             sw = atol(reply->element[i]->str);
             sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
             sw2 = (uint32_t)(sw & 0x00000000ffffffff);
-            printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
+            printf("\t\tdel_link: sw%02d<->sw%02d\n", sw1, sw2);
             matrix_ori[sw1][sw2] = MAX_DIST;
         }
     }
@@ -290,7 +296,7 @@ void *work_thread(void *redis_ip)
     redisFree(context);
 
     // Floyd 计算任意两点间距离
-    printf("start to run Floyd\n");
+    printf("\tstart to run Floyd\n");
     for(i = 0; i < MAX_NUM; i++)
     {
         for(j = 0; j < MAX_NUM; j++)
@@ -306,7 +312,7 @@ void *work_thread(void *redis_ip)
             {
                 if(matrix[i][k] == MAX_DIST || matrix[k][j] == MAX_DIST) 
                     continue;//中间节点不可达 
-                if(matrix[i][j] == MAX_DIST || matrix[i][k] + matrix[k][j] < matrix[i][j])//经过中间节点，路径变短 
+                if(matrix[i][k] + matrix[k][j] < matrix[i][j])//经过中间节点，路径变短 
                 {
                     matrix[i][j] = matrix[i][k] + matrix[k][j];
                     route[i][j] = k;
@@ -314,7 +320,7 @@ void *work_thread(void *redis_ip)
             }
         }
     }
-    printf("finish to run Floyd\n");
+    printf("\tfinish to run Floyd\n");
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "smembers del_link_%02d", slot);
@@ -323,28 +329,30 @@ void *work_thread(void *redis_ip)
     context1 = redisConnect(redis_ip, REDIS_SERVER_PORT);
     if (context1->err)
     { 
-        printf("Error: %s\n", context1->errstr);
+        printf("\tError: %s\n", context1->errstr);
         redisFree(context1);
         return NULL;
     }
-    printf("connect redis server success\n");
+    // printf("connect redis server success\n");
+    printf("\tslot_%d start to adjust del_link route\n", slot);
 
     /*执行redis命令*/
     reply1 = (redisReply *)redisCommand(context1, cmd);
     if (reply1 != NULL && reply1->elements != 0)
     {
         // 输出查询结果
-        printf("del_link num = %lu\n",reply1->elements);
+        printf("\tdel_link num = %lu\n",reply1->elements);
 
+        // 先处理普通路由（正在工作的c2d路由除外）
         for(i = 0; i < reply1->elements; i++)
         {
             sw = atol(reply1->element[i]->str);
             sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
             sw2 = (uint32_t)(sw & 0x00000000ffffffff);
-            printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
+            printf("\t\tdel_link: sw%02d<->sw%02d\n", sw1, sw2);
 
-            ctrl_id = sw1;
-            db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
+            // ctrl_id = sw1;
+            // db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
 
             // 查询相关的非定时路由
             /*组装Redis命令*/
@@ -354,23 +362,23 @@ void *work_thread(void *redis_ip)
             context2 = redisConnect(redis_ip, REDIS_SERVER_PORT);
             if (context2->err)
             { 
-                printf("Error: %s\n", context2->errstr);
+                printf("\t\tError: %s\n", context2->errstr);
                 redisFree(context2);
                 continue;
             }
-            printf("connect redis server success\n");
+            // printf("connect redis server success\n");
 
             /*执行redis命令*/
             reply2 = (redisReply *)redisCommand(context2, cmd);
             if (reply2 == NULL)
             {
-                printf("execute command:%s failure\n", cmd);
+                printf("\t\texecute command:%s failure\n", cmd);
                 redisFree(context2);
                 continue;
             }
 
             // 输出查询结果
-            printf("del route num = %lu\n",reply2->elements);
+            printf("\t\tdel route num = %lu\n",reply2->elements);
             if(reply2->elements == 0)
             {
                 freeReplyObject(reply2);
@@ -380,7 +388,7 @@ void *work_thread(void *redis_ip)
 
             for(k = 0; k < reply2->elements; k++)
             {
-                printf("route entry: %s\n",reply2->element[k]->str);
+                printf("\t\t\troute entry: %s\n",reply2->element[k]->str);
                 strncpy(ip_src_two, reply2->element[k]->str+6, 2);
                 sw = strtoi(ip_src_two, 2) - 1;
                 ctrl_id = sw;
@@ -408,7 +416,7 @@ void *work_thread(void *redis_ip)
 
                         // Suurballe 计算两点之间的路由
                         // 初始化
-                        printf("start to run Suurballe\n");
+                        printf("\t\t\tstart to run Suurballe\n");
                         strncpy(ip_dst_two, reply2->element[k]->str+IP_LEN+6, 2);
                         sw1 = strtoi(ip_src_two, 2) - 1;
                         sw2 = strtoi(ip_dst_two, 2) - 1;
@@ -503,14 +511,14 @@ void *work_thread(void *redis_ip)
                                 path[c++] = curnode;
                             }
                             
-                            printf("db%d - db%d: \n", sw1, sw2);
-                            c = 0;
-                            printf("\tpath: ");
-                            while(path[c] != -1)
-                            {
-                                printf("%d ", path[c++]);
-                            }
-                            printf("\n");
+                            // printf("db%d - db%d: \n", sw1, sw2);
+                            // c = 0;
+                            // printf("\tpath: ");
+                            // while(path[c] != -1)
+                            // {
+                            //     printf("%d ", path[c++]);
+                            // }
+                            // printf("\n");
 
                             // 第二次Dijkstra计算
                             node_new[sw1][0] = 1;
@@ -564,13 +572,13 @@ void *work_thread(void *redis_ip)
                                     path_new[c++] = curnode;
                                 }
 
-                                c = 0;
-                                printf("\tpath_new: ");
-                                while(path_new[c] != -1)
-                                {
-                                    printf("%d ", path_new[c++]);
-                                }
-                                printf("\n");
+                                // c = 0;
+                                // printf("\tpath_new: ");
+                                // while(path_new[c] != -1)
+                                // {
+                                //     printf("%d ", path_new[c++]);
+                                // }
+                                // printf("\n");
 
                                 // 比较两条路径，删除重复部分
                                 a = 0;
@@ -624,21 +632,21 @@ void *work_thread(void *redis_ip)
                                     c++;
                                 }
                                 
-                                printf("db%d - db%d: \n", sw1, sw2);
-                                c = 0;
-                                printf("\tpath_1: ");
-                                while(path_1[c] != -1)
-                                {
-                                    printf("%d ", path_1[c++]);
-                                }
-                                printf("\n");
-                                c = 0;
-                                printf("\tpath_2: ");
-                                while(path_2[c] != -1)
-                                {
-                                    printf("%d ", path_2[c++]);
-                                }
-                                printf("\n\n");
+                                // printf("db%d - db%d: \n", sw1, sw2);
+                                // c = 0;
+                                // printf("\tpath_1: ");
+                                // while(path_1[c] != -1)
+                                // {
+                                //     printf("%d ", path_1[c++]);
+                                // }
+                                // printf("\n");
+                                // c = 0;
+                                // printf("\tpath_2: ");
+                                // while(path_2[c] != -1)
+                                // {
+                                //     printf("%d ", path_2[c++]);
+                                // }
+                                // printf("\n\n");
 
                                 // 向数据库写入2条新路由
                                 c = 0;
@@ -650,8 +658,8 @@ void *work_thread(void *redis_ip)
                                 }
                                 Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
                                 memset(out_sw_port, 0, CMD_MAX_LENGHT);
-                                // 间隔2s
-                                sleep(2);
+                                // 间隔20ms
+                                usleep(20000);
                                 c = 0;
                                 while(path_2[c+1] != -1)
                                 {
@@ -676,7 +684,7 @@ void *work_thread(void *redis_ip)
                             }
                             else
                             {
-                                printf("dijkstra_2 failed\n");
+                                printf("\t\t\tdijkstra_2 failed\n");
                                 // 向数据库写入1条新路由
                                 c = 0;
                                 while(path[c+1] != -1) c++;
@@ -707,18 +715,135 @@ void *work_thread(void *redis_ip)
                         }
                         else
                         {
-                            printf("Suurballe failed\n");
+                            printf("\t\t\tSuurballe failed\n");
                         }
-                        printf("finish to run Suurballe\n");  
+                        printf("\t\t\tfinish to run Suurballe\n");  
                     }
                     // 判断是 正在工作的 c2d控制通道路由
                     // 确定源是本区域的控制器，需要判断目的是本地数据库
                     else if( (strstr(ip_src, "44") == NULL) && (strstr(ip_dst, "44") != NULL) && (sw2 == db_id) )
                     {
+                        continue;
+                    }
+                    // 判断是 正在工作的 d2c控制通道路由
+                    // 确定源是本地数据库，需要判断目的是本区域控制器
+                    else if( (strstr(ip_src, "44") != NULL) && (strstr(ip_dst, "44") == NULL) && (Get_Ctrl_Conn_Db((uint32_t)sw2, redis_ip) == db_id) )
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        // 向数据库写入新路由
+                        printf("\t\t\tdel_link sw%02d<->sw%02d new route write to Redis\n", sw1, sw2);
+                        printf("\t\t\tsw%02d<->sw%02d dist = %d\n", sw1, sw2, matrix[sw1][sw2]);
+                        if(matrix[sw1][sw2] != MAX_DIST)
+                        {
+                            printf("\t\t\tstart to generate route_sw%02d_sw%02d\n", sw1, sw2);
+                            // for(a = 0; a < MAX_NUM; a++)
+                            // {
+                            //     for(b = 0; b < MAX_NUM; b++)
+                            //     {
+                            //         printf("route[%02d][%02d]=%d, ", a, b, route[a][b]);
+                            //     }
+                            //     printf("\n");
+                            // }
+                            hop = 0;
+                            nextsw[hop++] = sw1;
+                            out(sw1, sw2, &route[0][0], nextsw, &hop);
+                            nextsw[hop] = sw2;
+                            
+                            printf("\t\t\troute_sw%02d_sw%02d: ", sw1, sw2);
+                            for(j = 0; j < hop; j++)
+                            {
+                                snprintf(sw_port, 8, "%03d%03d ", nextsw[j], nextsw[j+1]);
+                                strncpy(out_sw_port + j * 7, sw_port, 7);
+                                printf("%03d ", nextsw[j]);
+                            }
+                            printf("%03d\n", nextsw[j]);
+                            Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
+                            memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                        }
+                    }  
+                }
+            }
+            
+            freeReplyObject(reply2);
+            redisFree(context2);
+        }
+
+        // 等待其他路由调整完成之后，通知相应控制器切换数据库，最后调整c2d工作路由
+        sleep(5);
+        for(i = 0; i < reply1->elements; i++)
+        {
+            sw = atol(reply1->element[i]->str);
+            sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
+            sw2 = (uint32_t)(sw & 0x00000000ffffffff);
+            printf("\t\tdel_link: sw%02d<->sw%02d\n", sw1, sw2);
+
+            // ctrl_id = sw1;
+            // db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
+
+            // 查询相关的非定时路由
+            /*组装Redis命令*/
+            snprintf(cmd, CMD_MAX_LENGHT, "smembers rt_set_%02d_%02d", sw1, sw2);
+
+            /*连接redis*/
+            context2 = redisConnect(redis_ip, REDIS_SERVER_PORT);
+            if (context2->err)
+            { 
+                printf("\t\tError: %s\n", context2->errstr);
+                redisFree(context2);
+                continue;
+            }
+            // printf("connect redis server success\n");
+
+            /*执行redis命令*/
+            reply2 = (redisReply *)redisCommand(context2, cmd);
+            if (reply2 == NULL)
+            {
+                printf("\t\texecute command:%s failure\n", cmd);
+                redisFree(context2);
+                continue;
+            }
+
+            // 输出查询结果
+            printf("\t\tdel_link_sw%02d_sw%02d route num = %lu\n", sw1, sw2, reply2->elements);
+            if(reply2->elements == 0)
+            {
+                freeReplyObject(reply2);
+                redisFree(context2);
+                continue;
+            }
+
+            for(k = 0; k < reply2->elements; k++)
+            {
+                printf("\t\t\troute entry: %s\n",reply2->element[k]->str);
+                strncpy(ip_src_two, reply2->element[k]->str+6, 2);
+                sw = strtoi(ip_src_two, 2) - 1;
+                ctrl_id = sw;
+                db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
+
+                // 判断起点属于本区域交换机，删除旧的链路-路由映射，向数据库写入新路由
+                // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
+                if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
+                {             
+                    strncpy(ip_src, reply2->element[k]->str, IP_LEN);
+                    strncpy(ip_dst, reply2->element[k]->str + IP_LEN, IP_LEN);
+                    num = reply2->element[k]->str[IP_LEN*2] - '0';
+                    // Del_Rt_Set(slot, ip_src, ip_dst, num, redis_ip);
+
+                    strncpy(ip_dst_two, reply2->element[k]->str+IP_LEN+6, 2);
+                    sw1 = strtoi(ip_src_two, 2) - 1;
+                    sw2 = strtoi(ip_dst_two, 2) - 1;
+                    
+                    // 判断是 正在工作的 c2d控制通道路由
+                    // 确定源是本区域的控制器，需要判断目的是本地数据库
+                    if( (strstr(ip_src, "44") == NULL) && (strstr(ip_dst, "44") != NULL) && (sw2 == db_id) )
+                    {
                         // 优雅关闭tcp套接字，通知控制器切换数据库
                         if(flag_fd[sw1] == 0)
                         {
-                            printf("wait to shutdown ctrl_%d socket_%d\n", sw1, fd[sw1]);
+                            printf("\t\t\twait to shutdown ctrl_%d socket_%d\n", sw1, fd[sw1]);
                             // shutdown(fd[sw1], SHUT_WR);
                             fd_close[fd_close_num++] = fd[sw1];
                             flag_fd[sw1] = 1;
@@ -731,39 +856,19 @@ void *work_thread(void *redis_ip)
                         // 优雅关闭tcp套接字，通知控制器切换数据库
                         if(flag_fd[sw2] == 0)
                         {
-                            printf("wait to shutdown ctrl_%d socket_%d\n", sw2, fd[sw2]);
+                            printf("\t\t\twait to shutdown ctrl_%d socket_%d\n", sw2, fd[sw2]);
                             // shutdown(fd[sw2], SHUT_WR);
                             fd_close[fd_close_num++] = fd[sw2];
                             flag_fd[sw2] = 1;
                         }
                     }
-                    else
-                    {
-                        // 向数据库写入新路由
-                        if(matrix[sw1][sw2] != MAX_DIST)
-                        {
-                            hop = 0;
-                            nextsw[hop++] = sw1;
-                            out(sw1, sw2, &route[0][0], nextsw, &hop);
-                            nextsw[hop] = sw2;
-
-                            for(j = 0; j < hop; j++)
-                            {
-                                snprintf(sw_port, 8, "%03d%03d ", nextsw[j], nextsw[j+1]);
-                                strncpy(out_sw_port + j * 7, sw_port, 7);
-                            }
-                            Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
-                            memset(out_sw_port, 0, CMD_MAX_LENGHT);
-                        }
-                    }  
                 }
             }
             
-            // 等待其他路由调整完成之后，通知相应控制器切换数据库，最后调整c2d工作路由
-            sleep(7);
+            // 通知相应控制器切换数据库，然后调整c2d工作路由
             for(j = 0; j < fd_close_num; j++)
             {
-                printf("shutdown socket %d\n", fd_close[j]);
+                printf("\t\tshutdown socket %d\n", fd_close[j]);
                 shutdown(fd_close[j], SHUT_WR);
                 // close(fd_close[j]);
             }
@@ -780,7 +885,7 @@ void *work_thread(void *redis_ip)
             
             for(k = 0; k < reply2->elements; k++)
             {
-                printf("route entry: %s\n",reply2->element[k]->str);
+                printf("\t\t\troute entry: %s\n",reply2->element[k]->str);
                 strncpy(ip_src_two, reply2->element[k]->str+6, 2);
                 sw = strtoi(ip_src_two, 2) - 1;
                 ctrl_id = sw;
@@ -845,7 +950,7 @@ void *work_thread(void *redis_ip)
         }
     }
     
-    printf("slot_%d del_link上的全部路由调整已完成\n", slot);
+    printf("\tslot_%d del_link上的全部路由调整已完成\n", slot);
     freeReplyObject(reply1);
     redisFree(context1);
     return NULL;
@@ -875,7 +980,7 @@ void *udpconnect(void *redis_ip)
         slot = atoi(buf);
         // memset(fail_link_index, 0 , sizeof(fail_link_index));
         // 将下一个时间片对应的index归零
-        printf("slot_%d fail_link index memset to 0\n", slot+1);
+        printf("slot_%d fail_link index memset to 0\n", (slot+1)%SLOT_NUM);
         for(i = 0; i < MAX_NUM; i++)
         {
             fail_link_index[(slot+1+SLOT_NUM)%SLOT_NUM][i] = 0;
@@ -907,7 +1012,7 @@ void *d2d_thread(void *arg)
     char *obj = (*d2d_para).obj;
     char *redis_ip = (*d2d_para).redis_ip;
     int num = obj[IP_LEN*2+7] - '0';
-    printf("obj = %s, redis_ip = %s, num = %d\n", obj, redis_ip, num);
+    printf("\tobj = %s, redis_ip = %s, num = %d\n", obj, redis_ip, num);
 
     char cmd[CMD_MAX_LENGHT] = {0};
     redisContext *context;
@@ -925,7 +1030,7 @@ void *d2d_thread(void *arg)
     int port2 = 999; // 对于d2d路由，源节点的该字段存储第二个出端口，非源节点的该字段存储入端口
     strncpy(ip_src, &obj[6], IP_LEN);
     strncpy(ip_dst, &obj[6 + IP_LEN], IP_LEN);
-    printf("ip_src = %s, ip_dst = %s\n", ip_src, ip_dst);
+    printf("\tip_src = %s, ip_dst = %s\n", ip_src, ip_dst);
     int outport_src = 999; // 记录源节点的第一条路由的出端口
 
     // 等待各数据库收到相应的新增路由之后，再分发路由通告修改流表
@@ -937,15 +1042,15 @@ void *d2d_thread(void *arg)
         context = redisConnect(redis_ip, REDIS_SERVER_PORT);
         if (context->err)
         { 
-            printf("Error: %s\n", context->errstr);
+            printf("\tError: %s\n", context->errstr);
             redisFree(context);
             return NULL;
         }
-        printf("connect redis server success\n");
+        // printf("connect redis server success\n");
         reply = (redisReply *)redisCommand(context, cmd);
         if (reply == NULL)
         {
-            printf("execute command:%s failure\n", cmd);
+            printf("\texecute command:%s failure\n", cmd);
             redisFree(context);
             return NULL;
         }
@@ -953,7 +1058,7 @@ void *d2d_thread(void *arg)
         {
             freeReplyObject(reply);
             redisFree(context);
-            printf("route lookup failed\n");
+            printf("\troute lookup failed\n");
             return NULL;
         }
 
@@ -983,13 +1088,13 @@ void *d2d_thread(void *arg)
 
                 // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3
                 memset(buf, 0, BUFSIZE);
-                printf("非源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
+                printf("\t\t非源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
                 snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
-                printf("buf:%s\n",buf);
+                printf("\t\tbuf:%s\n",buf);
                 ret = send(cfd, buf, BUFSIZE, 0);
                 if (ret == -1)
                 {
-                    print_err("send route failed", __LINE__, errno);
+                    print_err("\t\tsend route failed", __LINE__, errno);
                     // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
                     Add_Wait_Exec(ctrl_id, buf, redis_ip);
                 }
@@ -1002,11 +1107,11 @@ void *d2d_thread(void *arg)
         context = redisConnect(redis_ip, REDIS_SERVER_PORT);
         if (context->err)
         { 
-            printf("Error: %s\n", context->errstr);
+            printf("\tError: %s\n", context->errstr);
             redisFree(context);
             return NULL;
         }
-        printf("connect redis server success\n");
+        // printf("connect redis server success\n");
         
         // obj[IP_LEN*2+7] = '1';
         // snprintf(cmd, CMD_MAX_LENGHT, "lrange %s 0 -1", obj);
@@ -1031,7 +1136,7 @@ void *d2d_thread(void *arg)
         reply = (redisReply *)redisCommand(context, cmd);
         if (reply == NULL)
         {
-            printf("execute command:%s failure\n", cmd);
+            printf("\texecute command:%s failure\n", cmd);
             redisFree(context);
             return NULL;
         }
@@ -1093,13 +1198,13 @@ void *d2d_thread(void *arg)
                 
                 // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3(port2字段用于承载入端口)
                 memset(buf, 0, BUFSIZE);
-                printf("非源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
+                printf("\t\t非源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
                 snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
-                printf("buf:%s\n",buf);
+                printf("\t\tbuf:%s\n",buf);
                 ret = send(cfd, buf, BUFSIZE, 0);
                 if (ret == -1)
                 {
-                    print_err("send route failed", __LINE__, errno);
+                    print_err("\t\tsend route failed", __LINE__, errno);
                     // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
                     Add_Wait_Exec(ctrl_id, buf, redis_ip);
                 }
@@ -1165,7 +1270,7 @@ int route_add(char *obj, char *redis_ip)
         redisFree(context);
         return -1;
     }
-    printf("connect redis server success\n");
+    // printf("connect redis server success\n");
 
     /*执行redis命令*/
     reply = (redisReply *)redisCommand(context, cmd);
@@ -1207,13 +1312,13 @@ int route_add(char *obj, char *redis_ip)
 
             // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3
             memset(buf, 0, BUFSIZE);
-            printf("db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
+            printf("\tdb_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
             snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
-            printf("buf:%s\n",buf);
+            printf("\tbuf:%s\n",buf);
             ret = send(cfd, buf, BUFSIZE, 0);
             if (ret == -1)
             {
-                print_err("send route failed", __LINE__, errno);
+                print_err("\tsend route failed", __LINE__, errno);
                 // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
                 Add_Wait_Exec(ctrl_id, buf, redis_ip);
             }
@@ -1293,7 +1398,7 @@ int route_del(char *obj, int index, char *redis_ip)
         redisFree(context);
         return -1;
     }
-    printf("connect redis server success\n");
+    // printf("connect redis server success\n");
 
     /*执行redis命令*/
     reply = (redisReply *)redisCommand(context, cmd);
@@ -1315,12 +1420,12 @@ int route_del(char *obj, int index, char *redis_ip)
     sw = atol(reply->str);
     fail_sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
     fail_sw2 = (uint32_t)(sw & 0x00000000ffffffff); // 失效节点
-    printf("fail_link_%d: sw%d<->sw%d\n", index, fail_sw1, fail_sw2); 
+    printf("\tfail_link_%d: sw%d<->sw%d\n", index, fail_sw1, fail_sw2); 
     freeReplyObject(reply);
     redisFree(context);
 
     // 读取拓扑
-    printf("start to read topo\n");
+    printf("\tstart to read topo\n");
     snprintf(cmd, CMD_MAX_LENGHT, "hgetall real_topo");
     context = redisConnect(redis_ip, REDIS_SERVER_PORT);
     reply = (redisReply *)redisCommand(context, cmd);
@@ -1353,7 +1458,7 @@ int route_del(char *obj, int index, char *redis_ip)
     redisFree(context);
 
     // 去掉下个时间片要删除的链路
-    printf("start to revise topo(del some links)\n");
+    printf("\tstart to revise topo(del some links)\n");
     snprintf(cmd, CMD_MAX_LENGHT, "smembers del_link_%02d", slot);
     context = redisConnect(redis_ip, REDIS_SERVER_PORT);
     if (context->err)
@@ -1362,19 +1467,19 @@ int route_del(char *obj, int index, char *redis_ip)
         redisFree(context);
         return FAILURE;
     }
-    printf("connect redis server success\n");
+    // printf("connect redis server success\n");
 
     reply = (redisReply *)redisCommand(context, cmd);
     if (reply != NULL && reply->elements != 0)
     {
-        printf("del_link num = %lu\n",reply->elements);
+        printf("\tdel_link num = %lu\n",reply->elements);
 
         for(i = 0; i < reply->elements; i++)
         {
             sw = atol(reply->element[i]->str);
             sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
             sw2 = (uint32_t)(sw & 0x00000000ffffffff);
-            printf("del_link: sw%02d<->sw%02d\n", sw1, sw2);
+            printf("\t\tdel_link: sw%02d<->sw%02d\n", sw1, sw2);
             matrix_ori[sw1][sw2] = MAX_DIST;
         }
     }
@@ -1382,7 +1487,7 @@ int route_del(char *obj, int index, char *redis_ip)
     redisFree(context);
 
     // Floyd 计算任意两点间距离
-    printf("start to run Floyd\n");
+    printf("\tstart to run Floyd\n");
     for(i = 0; i < MAX_NUM; i++)
     {
         for(j = 0; j < MAX_NUM; j++)
@@ -1398,7 +1503,7 @@ int route_del(char *obj, int index, char *redis_ip)
             {
                 if(matrix[i][k] == MAX_DIST || matrix[k][j] == MAX_DIST) 
                     continue;//中间节点不可达 
-                if(matrix[i][j] == MAX_DIST || matrix[i][k] + matrix[k][j] < matrix[i][j])//经过中间节点，路径变短 
+                if(matrix[i][k] + matrix[k][j] < matrix[i][j])//经过中间节点，路径变短 
                 {
                     matrix[i][j] = matrix[i][k] + matrix[k][j];
                     route[i][j] = k;
@@ -1406,7 +1511,7 @@ int route_del(char *obj, int index, char *redis_ip)
             }
         }
     }
-    printf("finish to run Floyd\n");
+    printf("\tfinish to run Floyd\n");
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "smembers rt_set_%02d_%02d", fail_sw1, fail_sw2);
@@ -1419,7 +1524,7 @@ int route_del(char *obj, int index, char *redis_ip)
         redisFree(context);
         return -1;
     }
-    printf("connect redis server success\n");
+    // printf("connect redis server success\n");
 
     /*执行redis命令*/
     reply = (redisReply *)redisCommand(context, cmd);
@@ -1431,7 +1536,7 @@ int route_del(char *obj, int index, char *redis_ip)
     }
 
     // 输出查询结果
-    printf("fail route num = %lu\n",reply->elements);
+    printf("\tfail_link_sw%02d_sw%02d route num = %lu\n", fail_sw1, fail_sw2, reply->elements);
     if(reply->elements == 0) 
     {
         freeReplyObject(reply);
@@ -1440,7 +1545,7 @@ int route_del(char *obj, int index, char *redis_ip)
     }
     for(i = 0; i < reply->elements; i++)
     {
-        printf("route entry: %s\n",reply->element[i]->str);
+        printf("\t\troute entry: %s\n",reply->element[i]->str);
         strncpy(ip_src_two, reply->element[i]->str+6, 2);
         sw = strtoi(ip_src_two, 2) - 1;
         ctrl_id = sw;
@@ -1468,7 +1573,7 @@ int route_del(char *obj, int index, char *redis_ip)
 
                 // Suurballe 计算两点之间的路由
                 // 初始化
-                printf("start to run Suurballe\n");
+                printf("\t\t\tstart to run Suurballe\n");
                 mindist = 0;
                 minnode = -1;
                 curnode = -1;
@@ -1560,14 +1665,14 @@ int route_del(char *obj, int index, char *redis_ip)
                         path[c++] = curnode;
                     }
                     
-                    printf("db%d - db%d: \n", sw1, sw2);
-                    c = 0;
-                    printf("\tpath: ");
-                    while(path[c] != -1)
-                    {
-                        printf("%d ", path[c++]);
-                    }
-                    printf("\n");
+                    // printf("db%d - db%d: \n", sw1, sw2);
+                    // c = 0;
+                    // printf("\tpath: ");
+                    // while(path[c] != -1)
+                    // {
+                    //     printf("%d ", path[c++]);
+                    // }
+                    // printf("\n");
 
                     // 第二次Dijkstra计算
                     node_new[sw1][0] = 1;
@@ -1621,13 +1726,13 @@ int route_del(char *obj, int index, char *redis_ip)
                             path_new[c++] = curnode;
                         }
 
-                        c = 0;
-                        printf("\tpath_new: ");
-                        while(path_new[c] != -1)
-                        {
-                            printf("%d ", path_new[c++]);
-                        }
-                        printf("\n");
+                        // c = 0;
+                        // printf("\tpath_new: ");
+                        // while(path_new[c] != -1)
+                        // {
+                        //     printf("%d ", path_new[c++]);
+                        // }
+                        // printf("\n");
 
                         // 比较两条路径，删除重复部分
                         a = 0;
@@ -1681,21 +1786,21 @@ int route_del(char *obj, int index, char *redis_ip)
                             c++;
                         }
 
-                        printf("db%d - db%d: \n", sw1, sw2);
-                        c = 0;
-                        printf("\tpath_1: ");
-                        while(path_1[c] != -1)
-                        {
-                            printf("%d ", path_1[c++]);
-                        }
-                        printf("\n");
-                        c = 0;
-                        printf("\tpath_2: ");
-                        while(path_2[c] != -1)
-                        {
-                            printf("%d ", path_2[c++]);
-                        }
-                        printf("\n\n");
+                        // printf("db%d - db%d: \n", sw1, sw2);
+                        // c = 0;
+                        // printf("\tpath_1: ");
+                        // while(path_1[c] != -1)
+                        // {
+                        //     printf("%d ", path_1[c++]);
+                        // }
+                        // printf("\n");
+                        // c = 0;
+                        // printf("\tpath_2: ");
+                        // while(path_2[c] != -1)
+                        // {
+                        //     printf("%d ", path_2[c++]);
+                        // }
+                        // printf("\n\n");
 
                         // 向数据库写入2条新路由
                         c = 0;
@@ -1707,8 +1812,8 @@ int route_del(char *obj, int index, char *redis_ip)
                         }
                         Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
                         memset(out_sw_port, 0, CMD_MAX_LENGHT);
-                        // 间隔2s
-                        sleep(2);
+                        // 间隔20ms
+                        usleep(20000);
                         c = 0;
                         while(path_2[c+1] != -1)
                         {
@@ -1733,7 +1838,7 @@ int route_del(char *obj, int index, char *redis_ip)
                     }
                     else
                     {
-                        printf("dijkstra_2 failed\n");
+                        printf("\t\t\tdijkstra_2 failed\n");
                         // 向数据库写入1条新路由
                         c = 0;
                         while(path[c+1] != -1) c++;
@@ -1764,9 +1869,9 @@ int route_del(char *obj, int index, char *redis_ip)
                 }
                 else
                 {
-                    printf("Suurballe failed\n");
+                    printf("\t\t\tSuurballe failed\n");
                 }
-                printf("finish to run Suurballe\n");              
+                printf("\t\t\tfinish to run Suurballe\n");              
             }
             else
             {
@@ -1777,7 +1882,7 @@ int route_del(char *obj, int index, char *redis_ip)
                    // 关闭tcp套接字，通知控制器切换数据库
                     if(fd[sw1] != 0)
                     {
-                        printf("close socket %d\n", fd[sw1]);
+                        printf("\t\t\tclose socket %d\n", fd[sw1]);
                         close(fd[sw1]);
                     }
                 }
@@ -1788,7 +1893,7 @@ int route_del(char *obj, int index, char *redis_ip)
                     // 关闭tcp套接字，通知控制器切换数据库
                     if(fd[sw2] != 0)
                     {
-                        printf("close socket %d\n", fd[sw2]);
+                        printf("\t\t\tclose socket %d\n", fd[sw2]);
                         close(fd[sw2]);
                     }
                 }
@@ -1797,11 +1902,12 @@ int route_del(char *obj, int index, char *redis_ip)
                 // printf("cfd:%ld\n", cfd);
                 // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3
                 memset(buf, 0, BUFSIZE);
-                snprintf(buf, BUFSIZE, "%d%03ld%s%03d%03d", ROUTE_DEL, sw, reply->element[i]->str, 0, 999);
+                snprintf(buf, BUFSIZE, "%d%03ld%s%s%03d%03d", ROUTE_DEL, sw, ip_src, ip_dst, 0, 999);
+                printf("\t\t\tbuf:%s\n",buf);
                 ret = send(cfd, buf, BUFSIZE, 0);
                 if (ret == -1)
                 {
-                    print_err("send route failed", __LINE__, errno);
+                    print_err("\t\t\tsend route failed", __LINE__, errno);
                     // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
                     Add_Wait_Exec(ctrl_id, buf, redis_ip);
                 }
@@ -1881,25 +1987,33 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
     // 订阅接收到的消息是一个带四元素的数组
     if (reply->type == REDIS_REPLY_ARRAY && reply->elements == 4)
     {
-        printf("Recieved message: %s -- %s\n", 
-                reply->element[2]->str,
-                reply->element[3]->str);
+        // printf("Recieved message: %s -- %s\n", 
+        //         reply->element[2]->str,
+        //         reply->element[3]->str);
 
         // 判断操作是否为rpush
         if(strstr(reply->element[2]->str, "rpush") != NULL)
         {
             if(strstr(reply->element[3]->str, "calrt") != NULL)
             {
+                printf("Recieved message: %s -- %s\n", 
+                reply->element[2]->str,
+                reply->element[3]->str);
+
                 // 查询数据库，下发流表项
                 strncpy(reply_str, reply->element[3]->str, 24);
                 if(route_add(reply_str, redis_ip) == -1)
-                    printf("cal route add failure\n");
+                    printf("cal route %s add failure\n", reply->element[3]->str);
                 else
-                    printf("cal route add success\n");
+                    printf("cal route %s add success\n", reply->element[3]->str);
             }
             // 判断是fail_link
             else if(strstr(reply->element[3]->str, "fail_link") != NULL) 
             {
+                printf("Recieved message: %s -- %s\n", 
+                reply->element[2]->str,
+                reply->element[3]->str);
+                
                 // 查询数据库，下发流表项
                 strncpy(ip_two, reply->element[3]->str+10, 2);
                 redis_id = atoi(ip_two);
@@ -1911,9 +2025,9 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
                 fail_link_index[slot_id][redis_id]++;
                 printf("redis_id = %d, index = %d\n", redis_id, index);
                 if(route_del(reply_str, index, redis_ip) == -1)
-                    printf("route del failure\n");
+                    printf("%s route del failure\n", reply->element[3]->str);
                 else
-                    printf("route del success\n");
+                    printf("%s route del success\n", reply->element[3]->str);
             }
         }
         // 判断操作是否为sadd
@@ -1921,6 +2035,10 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
         {
             if(strstr(reply->element[3]->str, "wait_exec") != NULL)
             {
+                printf("Recieved message: %s -- %s\n", 
+                reply->element[2]->str,
+                reply->element[3]->str);
+                
                 strncpy(ctrl_str, reply->element[3]->str+10, 2);
                 ctrl_id = atol(ctrl_str);
                 db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
@@ -1940,7 +2058,7 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
                         redisFree(context1);
                         return;
                     }
-                    printf("connect redis server success\n");
+                    // printf("connect redis server success\n");
                     reply1 = (redisReply *)redisCommand(context1, cmd);
                     if (reply1 == NULL)
                     {
@@ -1950,7 +2068,7 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
                     }
 
                     // 输出查询结果
-                    printf("entry num = %lu\n",reply1->elements);
+                    printf("%s entry num = %lu\n", reply->element[3]->str, reply1->elements);
                     if(reply1->elements == 0) 
                     {
                         freeReplyObject(reply1);
@@ -1959,7 +2077,7 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
                     }
                     for(i = 0; i < reply1->elements; i++)
                     {
-                        printf("ctrl_%d buf_%d: %s\n", ctrl_id, i, reply1->element[i]->str);
+                        printf("\tctrl_%d buf_%d: %s\n", ctrl_id, i, reply1->element[i]->str);
                         memset(buf, 0, BUFSIZE);
                         snprintf(buf, BUFSIZE, "%s", reply1->element[i]->str);
                         ret = send(cfd, buf, BUFSIZE, 0);
@@ -2067,5 +2185,6 @@ int main(int argc, char **argv)
     // 开启事件分发，event_base_dispatch会阻塞
     event_base_dispatch(base); // 运行event_base，直到没有event被注册在event_base中为止
 
+    printf("quit!\n");
     return 0;
 }

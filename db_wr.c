@@ -360,15 +360,15 @@ RET_RESULT Set_Fail_Link(uint32_t sw1, uint32_t sw2, int db_id, int slot, char* 
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t sw = (((uint64_t)sw1) << 32) + sw2;
     /*组装redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "del fail_link_%02d_%02d", db_id, (slot-1+SLOT_NUM)%SLOT_NUM);
+    snprintf(cmd, CMD_MAX_LENGHT, "del fail_link_%02d_%02d", db_id, (slot-2+SLOT_NUM)%SLOT_NUM);
 
     /*执行redis命令*/
     if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
     {
-        printf("\tdel fail_link_db%02d_%02d failure\n", db_id, (slot-1+SLOT_NUM)%SLOT_NUM);
+        printf("\tdel fail_link_db%02d_%02d failure\n", db_id, (slot-2+SLOT_NUM)%SLOT_NUM);
         return FAILURE;
     }
-    printf("\tdel fail_link_db%02d_%02d success\n", db_id, (slot-1+SLOT_NUM)%SLOT_NUM);
+    printf("\tdel fail_link_db%02d_%02d success\n", db_id, (slot-2+SLOT_NUM)%SLOT_NUM);
 
     /*组装redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "rpush fail_link_%02d_%02d %lu", db_id, slot, sw);
