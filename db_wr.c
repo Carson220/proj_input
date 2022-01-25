@@ -225,6 +225,9 @@ RET_RESULT Add_Real_Topo(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip)
     char cmd[CMD_MAX_LENGHT] = {0};
     uint64_t sw = (((uint64_t)sw1) << 32) + sw2;
     uint64_t delay = Get_Link_Delay(sw1, sw2, slot, redis_ip);
+    // 如果没有查询到新增链路时延，初始化为常数
+    if(delay == -1) delay = 1300;
+
     /*组装redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "hset real_topo %lu %lu", sw, delay);
 

@@ -121,7 +121,7 @@ void *tcpconnect(void *pth_arg)
 void out(int node1, int node2, int *route, int *nextsw, int *hop)
 {
     printf("node1 = %02d, node2 = %02d, hop = %d\n", node1, node2, *hop);
-    printf("*route = %p, *nextsw = %p\n", route, nextsw);
+    // printf("*route = %p, *nextsw = %p\n", route, nextsw);
     if(*(route + node1*MAX_NUM + node2) == -1)
     {
         printf("route[%02d][%02d] = -1\n", node1, node2);
@@ -263,6 +263,14 @@ void *work_thread(void *redis_ip)
     {
         matrix_ori[i][i] = 0;
     }
+    // for(a = 0; a < MAX_NUM; a++)
+    // {
+    //     for(b = 0; b < MAX_NUM; b++)
+    //     {
+    //         printf("matrix_ori[%02d][%02d]=%d, ", a, b, matrix_ori[a][b]);
+    //     }
+    //     printf("\n");
+    // }
     freeReplyObject(reply);
     redisFree(context);
     printf("\tfinish to read topo\n");
@@ -310,11 +318,14 @@ void *work_thread(void *redis_ip)
         {
             for(j = 0; j < MAX_NUM; j++)
             {
-                if(matrix[i][k] == MAX_DIST || matrix[k][j] == MAX_DIST) 
-                    continue;//中间节点不可达 
+                // if(matrix[i][k] == MAX_DIST || matrix[k][j] == MAX_DIST) 
+                //     continue;//中间节点不可达 
                 if(matrix[i][k] + matrix[k][j] < matrix[i][j])//经过中间节点，路径变短 
                 {
+                    printf("matrix[%02d][%02d]=%d,matrix[%02d][%02d]=%d,matrix[%02d][%02d]=%d\n",i,k,matrix[i][k],k,j,matrix[k][j],i,j,matrix[i][j]);
                     matrix[i][j] = matrix[i][k] + matrix[k][j];
+                    printf("new matrix[%02d][%02d]=%d\n",i,j,matrix[i][j]);
+                    if(matrix[i][j]<0) printf("matrix[%02d][%02d]小于零\n",i,j);
                     route[i][j] = k;
                 }
             }
