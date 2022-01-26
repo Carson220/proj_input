@@ -1431,7 +1431,7 @@ int route_del(char *obj, int index, char *redis_ip)
     sw = atol(reply->str);
     fail_sw1 = (uint32_t)((sw & 0xffffffff00000000) >> 32);
     fail_sw2 = (uint32_t)(sw & 0x00000000ffffffff); // 失效节点
-    printf("\tfail_link_%d: sw%d<->sw%d\n", index, fail_sw1, fail_sw2); 
+    printf("\t%s_index%d: sw%d<->sw%d\n", obj, index, fail_sw1, fail_sw2); 
     freeReplyObject(reply);
     redisFree(context);
 
@@ -1459,8 +1459,12 @@ int route_del(char *obj, int index, char *redis_ip)
             delay = atol(reply->element[i]->str);
             if(node1 != fail_sw2 && node2 != fail_sw2)
                 matrix_ori[node1][node2] = delay;
+            else // 在计算新路由时， 将失效链路的対端节点相关联的链路时延设置为一个比较大的常数，使得新路由尽量避开对端节点，以防止节点失效导致的路由多次调整
+                matrix_ori[node1][node2] = 1e7;
         }
     }
+    matrix_ori[fail_sw1][fail_sw2] = MAX_DIST;
+    matrix_ori[fail_sw2][fail_sw1] = MAX_DIST;
     for(i = 0; i < MAX_NUM; i++)
     {
         matrix_ori[i][i] = 0;
@@ -1512,8 +1516,8 @@ int route_del(char *obj, int index, char *redis_ip)
         {
             for(j = 0; j < MAX_NUM; j++)
             {
-                if(matrix[i][k] == MAX_DIST || matrix[k][j] == MAX_DIST) 
-                    continue;//中间节点不可达 
+                // if(matrix[i][k] == MAX_DIST || matrix[k][j] == MAX_DIST) 
+                //     continue;//中间节点不可达 
                 if(matrix[i][k] + matrix[k][j] < matrix[i][j])//经过中间节点，路径变短 
                 {
                     matrix[i][j] = matrix[i][k] + matrix[k][j];
@@ -1556,7 +1560,7 @@ int route_del(char *obj, int index, char *redis_ip)
     }
     for(i = 0; i < reply->elements; i++)
     {
-        printf("\t\troute entry: %s\n",reply->element[i]->str);
+        printf("\t\tfail route entry: %s\n",reply->element[i]->str);
         strncpy(ip_src_two, reply->element[i]->str+6, 2);
         sw = strtoi(ip_src_two, 2) - 1;
         ctrl_id = sw;
@@ -1893,7 +1897,7 @@ int route_del(char *obj, int index, char *redis_ip)
                    // 关闭tcp套接字，通知控制器切换数据库
                     if(fd[sw1] != 0)
                     {
-                        printf("\t\t\tclose socket %d\n", fd[sw1]);
+                        printf("\t\t\tclose db->ctrl_%02d socket %d\n", sw1, fd[sw1]);
                         close(fd[sw1]);
                     }
                 }
@@ -1904,7 +1908,7 @@ int route_del(char *obj, int index, char *redis_ip)
                     // 关闭tcp套接字，通知控制器切换数据库
                     if(fd[sw2] != 0)
                     {
-                        printf("\t\t\tclose socket %d\n", fd[sw2]);
+                        printf("\t\t\tclose ctrl_%02d->db socket %d\n", sw2, fd[sw2]);
                         close(fd[sw2]);
                     }
                 }
