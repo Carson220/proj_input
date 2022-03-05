@@ -412,7 +412,7 @@ void *work_thread(void *redis_ip)
                     strncpy(ip_src, reply2->element[k]->str, IP_LEN);
                     strncpy(ip_dst, reply2->element[k]->str + IP_LEN, IP_LEN);
                     num = reply2->element[k]->str[IP_LEN*2] - '0';
-                    Del_Rt_Set(slot, ip_src, ip_dst, num, redis_ip);
+                    // Del_Rt_Set(slot, ip_src, ip_dst, num, redis_ip);
 
                     strncpy(ip_dst_two, reply2->element[k]->str+IP_LEN+6, 2);
                     sw1 = strtoi(ip_src_two, 2) - 1;
@@ -422,8 +422,10 @@ void *work_thread(void *redis_ip)
                     if( (strstr(ip_dst, "44") != NULL) && (strstr(ip_src, "44") != NULL) )
                     {
                         // 把两条d2d路由的链路映射都删掉
-                        if(num == 1) Del_Rt_Set(slot, ip_src, ip_dst, 2, redis_ip);
-                        else Del_Rt_Set(slot, ip_src, ip_dst, 1, redis_ip);
+                        // if(num == 1) Del_Rt_Set(slot, ip_src, ip_dst, 2, redis_ip);
+                        // else Del_Rt_Set(slot, ip_src, ip_dst, 1, redis_ip);
+                        Del_Rt_Set(slot, ip_src, ip_dst, 1, redis_ip);
+                        Del_Rt_Set(slot, ip_src, ip_dst, 2, redis_ip);
 
                         // Suurballe 计算两点之间的路由
                         // 初始化
@@ -744,6 +746,7 @@ void *work_thread(void *redis_ip)
                     }
                     else
                     {
+                        Del_Rt_Set(slot, ip_src, ip_dst, num, redis_ip);
                         // 向数据库写入新路由
                         printf("\t\t\tdel_link sw%02d<->sw%02d new route write to Redis\n", sw1, sw2);
                         printf("\t\t\tsw%02d<->sw%02d dist = %d\n", sw1, sw2, matrix[sw1][sw2]);
@@ -774,7 +777,7 @@ void *work_thread(void *redis_ip)
                             Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
                             memset(out_sw_port, 0, CMD_MAX_LENGHT);
                         }
-                    }  
+                    } 
                 }
             }
             
@@ -841,7 +844,7 @@ void *work_thread(void *redis_ip)
                     strncpy(ip_src, reply2->element[k]->str, IP_LEN);
                     strncpy(ip_dst, reply2->element[k]->str + IP_LEN, IP_LEN);
                     num = reply2->element[k]->str[IP_LEN*2] - '0';
-                    // Del_Rt_Set(slot, ip_src, ip_dst, num, redis_ip);
+                    Del_Rt_Set(slot, ip_src, ip_dst, num, redis_ip);
 
                     strncpy(ip_dst_two, reply2->element[k]->str+IP_LEN+6, 2);
                     sw1 = strtoi(ip_src_two, 2) - 1;
