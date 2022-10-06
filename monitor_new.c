@@ -24,6 +24,7 @@
 
 #define MAX_NUM 66
 #define SLOT_NUM 44
+#define DB_NUM 6
 #define CMD_MAX_LENGHT 256
 // #define REDIS_SERVER_IP "192.168.10.118"
 
@@ -32,6 +33,7 @@
 // #define DB_ID 2 // database_id = 192.168.68.2
 // #define SERVER_IP "127.0.0.1" // tcp+udp ip
 #define SERVER_PORT 2345 // tcp port
+#define TCP_SERVER_PORT 2346 // keep alive tcp port
 #define UDP_PORT 12000 // udp port
 #define BUFSIZE 512
 #define ROUTE_ADD 1 // type_1 add
@@ -42,24 +44,31 @@
 #define IP_LEN 8
 #define MAX_DIST 0x3f3f3f3f
 
-int fd[MAX_NUM] = {0, }; // 记录不同控制器节点对应的套接字描述符
+int fd_ctl[MAX_NUM] = {0, }; // 记录不同控制器节点对应的套接字描述符
 int slot = 0; // slot_id
 int fail_link_index[SLOT_NUM][MAX_NUM] = {0, }; // 记录已经处理到的fail_link列表的索引
-int server_fd = -1; // UDP监听的套接字
+int server_fd_udp = -1; // UDP监听的套接字
+int server_fd_tcp = -1; // TCP监听的套接字（数据库之间）
+
+int keep_alive_flag[MAX_NUM] = {0, }; // flag=1 表示DB之间连接正常
+int fd_db_client[MAX_NUM] = {0, }; // 记录不同数据库（客户端）对应的套接字描述符
+int fd_db_server[MAX_NUM] = {0, }; // 记录不同数据库（服务端）对应的套接字描述符
+int db_neighbor_list[DB_NUM-1] = {0, }; // 记录数据库邻居序号（IP-1）
 
 void print_err(char *str, int line, int err_no) {
 	printf("%d, %s :%s\n",line,str,strerror(err_no));
 	// _exit(-1);
 }
 
+// udp 监听套接字初始化
 int listen_init(char *redis_ip)
 {
     // 初始化监听套接字
     int ret;
     struct sockaddr_in ser_addr;
 
-    server_fd = socket(AF_INET, SOCK_DGRAM, 0); //AF_INET:IPV4;SOCK_DGRAM:UDP
-    if(server_fd < 0)
+    server_fd_udp = socket(AF_INET, SOCK_DGRAM, 0); //AF_INET:IPV4;SOCK_DGRAM:UDP
+    if(server_fd_udp < 0)
     {
         printf("create socket fail!\n");
         return -1;
@@ -70,18 +79,18 @@ int listen_init(char *redis_ip)
     ser_addr.sin_addr.s_addr = inet_addr(redis_ip); //IP地址，需要进行网络序转换，INADDR_ANY：本地地址
     ser_addr.sin_port = htons(UDP_PORT);  //端口号，需要网络序转换
 
-    ret = bind(server_fd, (struct sockaddr*)&ser_addr, sizeof(ser_addr));
+    ret = bind(server_fd_udp, (struct sockaddr*)&ser_addr, sizeof(ser_addr));
     if(ret < 0)
     {
         printf("socket bind fail!\n");
-        close(server_fd);
+        close(server_fd_udp);
         return -1;
     }
     return 0;
 }
 
-// 子线程中等待客户端连接
-void *tcpconnect(void *pth_arg)
+// tcp 子线程，等待客户端（控制器）连接
+void *tcpconnect_ctl(void *pth_arg)
 {
 	long skfd = (long)pth_arg;
 
@@ -92,29 +101,194 @@ void *tcpconnect(void *pth_arg)
     int keepAlive = 1; // 开启keepalive属性
     int keepIdle = 1; // 如该连接在1秒内没有任何数据往来,则进行探测 
     int keepInterval = 1; // 探测时发包的时间间隔为1 秒
-    int keepCount = 1; // 探测尝试的次数
+    int keepCount = 2; // 探测尝试的次数
 
 	while(1) 
     {
 		struct sockaddr_in caddr = {0};
 		int csize = sizeof(caddr);
 		cfd = accept(skfd, (struct sockaddr*)&caddr, &csize);
-        setsockopt(skfd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepAlive, sizeof(keepAlive));
-        setsockopt(skfd, SOL_TCP, TCP_KEEPIDLE, (void*)&keepIdle, sizeof(keepIdle));
-        setsockopt(skfd, SOL_TCP, TCP_KEEPINTVL, (void *)&keepInterval, sizeof(keepInterval));
-        setsockopt(skfd, SOL_TCP, TCP_KEEPCNT, (void *)&keepCount, sizeof(keepCount));
+        setsockopt(cfd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepAlive, sizeof(keepAlive));
+        setsockopt(cfd, SOL_TCP, TCP_KEEPIDLE, (void*)&keepIdle, sizeof(keepIdle));
+        setsockopt(cfd, SOL_TCP, TCP_KEEPINTVL, (void *)&keepInterval, sizeof(keepInterval));
+        setsockopt(cfd, SOL_TCP, TCP_KEEPCNT, (void *)&keepCount, sizeof(keepCount));
 		if (cfd == -1) 
         {
 			print_err("accept failed", __LINE__, errno);
 		}
 		// 建立连接后打印一下客户端的ip和端口号
-		printf("cport = %d, caddr = %s\n", ntohs(caddr.sin_port),inet_ntoa(caddr.sin_addr));
+		printf("ctl: cport = %d, caddr = %s\n", ntohs(caddr.sin_port),inet_ntoa(caddr.sin_addr));
         // printf("ctrl_id = %d\n", ((inet_addr(inet_ntoa(caddr.sin_addr)))&0xff000000)>>24);
         // 记录SDN控制器对应的套接字描述符
         ctrl_id = (((inet_addr(inet_ntoa(caddr.sin_addr)))&0xff000000)>>24) -1;
-        if(fd[ctrl_id] != 0) close(fd[ctrl_id]);
-        fd[ctrl_id] = cfd;
+        if(fd_ctl[ctrl_id] != 0) close(fd_ctl[ctrl_id]);
+        fd_ctl[ctrl_id] = cfd;
 	}
+}
+
+// tcp 子线程，等待客户端（数据库）连接
+void *tcpconnect_db(void)
+{
+    // 使用accept阻塞形式得监听客户端的发来的连接，并返回通信描述符
+	long cfd = -1;
+    int db_id = -1;
+	pthread_t id;
+    int keepAlive = 1; // 开启keepalive属性
+    int keepIdle = 1; // 如该连接在1秒内没有任何数据往来,则进行探测 
+    int keepInterval = 1; // 探测时发包的时间间隔为1 秒
+    int keepCount = 2; // 探测尝试的次数
+
+	while(1) 
+    {
+		struct sockaddr_in caddr = {0};
+		int csize = sizeof(caddr);
+		cfd = accept(server_fd_tcp, (struct sockaddr*)&caddr, &csize);
+        setsockopt(cfd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepAlive, sizeof(keepAlive));
+        setsockopt(cfd, SOL_TCP, TCP_KEEPIDLE, (void*)&keepIdle, sizeof(keepIdle));
+        setsockopt(cfd, SOL_TCP, TCP_KEEPINTVL, (void *)&keepInterval, sizeof(keepInterval));
+        setsockopt(cfd, SOL_TCP, TCP_KEEPCNT, (void *)&keepCount, sizeof(keepCount));
+		if (cfd == -1) 
+        {
+			print_err("accept failed", __LINE__, errno);
+		}
+		// 建立连接后打印一下客户端的ip和端口号
+		printf("db: cport = %d, caddr = %s\n", ntohs(caddr.sin_port),inet_ntoa(caddr.sin_addr));
+        // printf("ctrl_id = %d\n", ((inet_addr(inet_ntoa(caddr.sin_addr)))&0xff000000)>>24);
+        // 记录数据库对应的套接字描述符
+        db_id = (((inet_addr(inet_ntoa(caddr.sin_addr)))&0xff000000)>>24) -1;
+        if(fd_db_client[db_id] != 0) close(fd_db_client[db_id]);
+        fd_db_client[db_id] = cfd;
+	}
+}
+
+// tcp 子线程，主动连接服务端（数据库）
+void *tcpconnect_client(void *pth_arg)
+{
+    int ret = 0;
+    int skfd = -1;
+    struct sockaddr_in addr;
+    char proxy_ip[20] = "192.168.68.";  // 数据库代理ip
+    int i = (int)pth_arg;
+
+    int keepAlive = 1; // 开启keepalive属性
+    int keepIdle = 1; // 如该连接在1秒内没有任何数据往来,则进行探测 
+    int keepInterval = 1; // 探测时发包的时间间隔为1 秒
+    int keepCount = 2; // 探测尝试的次数
+	
+    skfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (skfd == -1) 
+    {
+        print_err("socket failed",__LINE__,errno);
+    }
+    addr.sin_family = AF_INET; //设置tcp协议族
+    sprintf(&proxy_ip[11], "%d", db_neighbor_list[i]+1);
+    addr.sin_addr.s_addr = inet_addr(proxy_ip); //设置ip地址
+
+    //主动发送连接请求
+    while(connect(skfd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
+    {
+        print_err("connect failed",__LINE__,errno);
+        sleep(1);
+    }
+
+    setsockopt(skfd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepAlive, sizeof(keepAlive));
+    setsockopt(skfd, SOL_TCP, TCP_KEEPIDLE, (void*)&keepIdle, sizeof(keepIdle));
+    setsockopt(skfd, SOL_TCP, TCP_KEEPINTVL, (void *)&keepInterval, sizeof(keepInterval));
+    setsockopt(skfd, SOL_TCP, TCP_KEEPCNT, (void *)&keepCount, sizeof(keepCount));
+    fd_db_server[db_neighbor_list[i]] = skfd;
+    keep_alive_flag[db_neighbor_list[i]] = 1;
+
+}
+
+// 利用主动连接其他数据库（服务端）的套接字
+// 测试数据库之间的TCP持续连接情况
+void *keep_alive(void)
+{
+    int i, j = 0;
+    int skfd = -1;
+    int maxfd = -1;
+    int ret = -1;
+    int ret_recv = -1;
+    char buf[BUFSIZE] = {0};
+    pthread_t tcpid;
+    int num = 0; // 记录数据库邻居数量
+
+    struct timeval timeout = {2,0}; // wait 2s
+    fd_set read_fds;
+    
+    while(1)
+    {
+        FD_ZERO(&read_fds);
+        maxfd = -1;
+        for(i = 0; i < DB_NUM-1; i++)
+        {
+            // select 监听连接状态，同时设置断线重连
+            skfd = fd_db_server[db_neighbor_list[i]];
+            if(skfd != -1)
+            {
+                FD_SET(skfd, &read_fds);
+                if(skfd > maxfd) maxfd = skfd+1;
+            }
+        }
+        
+        ret = select(maxfd, &read_fds, NULL, NULL, &timeout);
+        if(ret == -1)
+        {
+            print_err("select error",__LINE__,errno);
+        }
+        else if(ret == 0)
+        {
+            print_err("select tiemout",__LINE__,errno);
+        }
+        else if(ret > 0)
+        {
+            for(i = 0; i < DB_NUM-1; i++)
+            {
+                skfd = fd_db_server[db_neighbor_list[i]];
+                if(FD_ISSET(skfd, &read_fds))
+                {
+                    memset(buf, 0, BUFSIZE);
+                    ret_recv = recv(skfd, buf, BUFSIZE , 0);
+                    if(ret_recv == 0 || ret_recv == -1)
+                    {
+                        // 表示数据库断开连接
+                        keep_alive_flag[db_neighbor_list[i]] = 0;
+                        fd_db_server[db_neighbor_list[i]] = -1;
+                        close(skfd);
+                        // 重新连接
+                        ret = pthread_create(&tcpid, NULL, tcpconnect_client, (void*)i);
+                        if (ret == -1) 
+                        {
+                            print_err("create tcpconnect_client failed", __LINE__, errno); 
+                        }
+                    }
+                    else if(ret_recv > 0)
+                    {
+                        // 收到数据库邻接状态询问
+                        if(strstr(buf, "request") != NULL)
+                        {
+                            // 回复邻居（数据库）个数
+                            num = 0;
+                            for(j = 0; j < DB_NUM-1; j++)
+                            {
+                                if(keep_alive_flag[db_neighbor_list[j]] == 1)
+                                    num++;
+                            }
+
+                            memset(buf, 0, BUFSIZE);
+                            snprintf(buf, BUFSIZE, "%d", num);
+                            printf("\t\t\tbuf:%s\n", buf);
+                            ret = send(skfd, buf, BUFSIZE, 0);
+                            if (ret == -1)
+                            {
+                                print_err("\t\t\tsend keepalive info failed", __LINE__, errno);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 // 用于输出路径，并写入文件
@@ -150,6 +324,7 @@ int strtoi(char *str, int size)
     return num;
 }
 
+// 向控制器发送路由通告
 void route_notice(int db_id, int sw, char *ip_src, char *ip_dst, int port1, int port2, char *redis_ip)
 {
     long cfd = -1;
@@ -159,7 +334,7 @@ void route_notice(int db_id, int sw, char *ip_src, char *ip_dst, int port1, int 
 
     // 等待路由同步到各个数据库之后再下发
     sleep(5);
-    cfd = fd[sw];
+    cfd = fd_ctl[sw];
 
     // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3(port2字段用于承载第二个出端口)
     memset(buf, 0, BUFSIZE);
@@ -178,6 +353,310 @@ void route_notice(int db_id, int sw, char *ip_src, char *ip_dst, int port1, int 
     free(ip_dst);
 }
 
+// 用于d2d线程传参的结构体
+struct para
+{
+    void *obj;
+    void *redis_ip;
+};
+
+// 选择第三方数据库写入路由调整命令
+int db_write_select(void)
+{
+    int i = 0;
+    int skfd = -1;
+    int maxfd = -1;
+    int ret = -1;
+    int ret_recv = -1;
+    char buf[BUFSIZE] = {0};
+    char req[] = "request";
+    pthread_t tcpid;
+    fd_set read_fds;
+    int num = 0; // 记录数据库邻居数量
+    int max_num = 0;
+    int db_id = -1; // 记录num最大的数据库id
+    
+    // 询问数据库邻接状态
+    for(i = 0; i < DB_NUM-1; i++)
+    {
+        skfd = fd_db_client[db_neighbor_list[i]];
+        if(keep_alive_flag[db_neighbor_list[i]] == 1)
+        {
+            memset(buf, 0, BUFSIZE);
+            snprintf(buf, BUFSIZE, "%s", req);
+            printf("\t\t\tbuf:%s\n",buf);
+            ret = send(skfd, buf, BUFSIZE, 0);
+            if (ret == -1)
+            {
+                print_err("\t\t\tsend keepalive info failed", __LINE__, errno);
+            }
+        }
+    }
+    
+    while(1)
+    {
+        FD_ZERO(&read_fds);
+        maxfd = -1;
+        for(i = 0; i < DB_NUM-1; i++)
+        {
+            // 利用连接到本数据库的客户端套接字
+            skfd = fd_db_client[db_neighbor_list[i]];
+            if(skfd != -1)
+            {
+                FD_SET(skfd, &read_fds);
+                if(skfd > maxfd) maxfd = skfd+1;
+            }
+        }
+        
+        ret = select(maxfd, &read_fds, NULL, NULL, NULL); // 阻塞监听
+        if(ret == -1)
+        {
+            print_err("select error",__LINE__,errno);
+        }
+        else if(ret > 0)
+        {
+            max_num = 0;
+            db_id = -1;
+            for(i = 0; i < DB_NUM-1; i++)
+            {
+                skfd = fd_db_client[db_neighbor_list[i]];
+                if(FD_ISSET(skfd, &read_fds))
+                {
+                    memset(buf, 0, BUFSIZE);
+                    ret_recv = recv(skfd, buf, BUFSIZE , 0);
+                    if(ret_recv > 0)
+                    {
+                        // 收到数据库邻接状态回复
+                        num = buf[0] - '0';
+                        if(num > max_num)
+                        {
+                            max_num = num;
+                            db_id = db_neighbor_list[i];
+                        }
+                    }
+                }
+            }
+            return db_id;
+        }
+    }
+}
+
+// 根据d2d路由表项，汇总并下发交换机流表到控制器
+void *d2d_thread(void *arg)
+{
+    struct para *d2d_para;
+    d2d_para = (struct para *)arg;
+    char *obj = (*d2d_para).obj;
+    char *redis_ip = (*d2d_para).redis_ip;
+    int num = obj[IP_LEN*2+7] - '0';
+    printf("\tobj = %s, redis_ip = %s, num = %d\n", obj, redis_ip, num);
+
+    char cmd[CMD_MAX_LENGHT] = {0};
+    redisContext *context;
+    redisReply *reply;
+    int i = 0;
+    int ctrl_id = 0; // 记录控制器ID
+    int db_id = 0;
+    int sw, sw_pre = 999;
+    int port = 999;
+    long cfd = -1;
+    int ret = -1;
+    char buf[BUFSIZE] = {0};
+    char ip_src[IP_LEN+1] = {0,};
+    char ip_dst[IP_LEN+1] = {0,};
+    int port2 = 999; // 对于d2d路由，源节点的该字段存储第二个出端口，非源节点的该字段存储入端口
+    strncpy(ip_src, &obj[6], IP_LEN);
+    strncpy(ip_dst, &obj[6 + IP_LEN], IP_LEN);
+    printf("\tip_src = %s, ip_dst = %s\n", ip_src, ip_dst);
+    int outport_src = 999; // 记录源节点的第一条路由的出端口
+
+    // 等待各数据库收到相应的新增路由之后，再分发路由通告修改流表
+    sleep(5);
+
+    if(num == 1) // 直接下发
+    {
+        snprintf(cmd, CMD_MAX_LENGHT, "lrange %s 0 -1", obj);
+        context = redisConnect(redis_ip, REDIS_SERVER_PORT);
+        if (context->err)
+        { 
+            printf("\tError: %s\n", context->errstr);
+            redisFree(context);
+            return NULL;
+        }
+        // printf("connect redis server success\n");
+        reply = (redisReply *)redisCommand(context, cmd);
+        if (reply == NULL)
+        {
+            printf("\texecute command:%s failure\n", cmd);
+            redisFree(context);
+            return NULL;
+        }
+        if(reply->elements == 0) 
+        {
+            freeReplyObject(reply);
+            redisFree(context);
+            printf("\troute lookup failed\n");
+            return NULL;
+        }
+
+        sw = atoi(reply->element[0]->str)/1000;
+        port = atoi(reply->element[0]->str)%1000;
+        sw_pre = sw;
+
+        for(i = 1; i < reply->elements; i++)
+        {
+            sw = atoi(reply->element[i]->str)/1000;
+            port = atoi(reply->element[i]->str)%1000;
+            // printf("sw:%u, outport:%u\n", sw, port);
+            ctrl_id = sw;
+            db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
+
+            // 判断该出端口属于本区域交换机，向对应控制器发送通告
+            // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
+            if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
+            {
+                cfd = fd_ctl[ctrl_id]; 
+                // printf("cfd:%ld\n", cfd);
+
+                // 入端口
+                port2 = sw_pre;
+                // add route to routes set <-> link
+                Add_Rt_Set((uint32_t)sw, (uint32_t)port, ip_src, ip_dst, num, redis_ip);
+
+                // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3
+                memset(buf, 0, BUFSIZE);
+                printf("\t\t非源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
+                snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
+                printf("\t\tbuf:%s\n",buf);
+                ret = send(cfd, buf, BUFSIZE, 0);
+                if (ret == -1)
+                {
+                    print_err("\t\tsend route failed", __LINE__, errno);
+                    // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
+                    Add_Wait_Exec(ctrl_id, buf, redis_ip);
+                }
+            }
+            sw_pre = sw;
+        }
+    }
+    else if(num == 2) // 对于源节点，整合两条路径的出端口一起下发
+    {
+        context = redisConnect(redis_ip, REDIS_SERVER_PORT);
+        if (context->err)
+        { 
+            printf("\tError: %s\n", context->errstr);
+            redisFree(context);
+            return NULL;
+        }
+        // printf("connect redis server success\n");
+        
+        // obj[IP_LEN*2+7] = '1';
+        // snprintf(cmd, CMD_MAX_LENGHT, "lrange %s 0 -1", obj);
+        // reply = (redisReply *)redisCommand(context, cmd);
+        // if (reply == NULL)
+        // {
+        //     printf("execute command:%s failure\n", cmd);
+        //     redisFree(context);
+        //     return NULL;
+        // }
+        // if(reply->elements == 0) 
+        // {
+        //     freeReplyObject(reply);
+        //     redisFree(context);
+        //     return NULL;
+        // }
+        // outport_src = atoi(reply->element[0]->str)%1000;
+        // freeReplyObject(reply);
+
+        obj[IP_LEN*2+7] = '2';
+        snprintf(cmd, CMD_MAX_LENGHT, "lrange %s 0 -1", obj);
+        reply = (redisReply *)redisCommand(context, cmd);
+        if (reply == NULL)
+        {
+            printf("\texecute command:%s failure\n", cmd);
+            redisFree(context);
+            return NULL;
+        }
+        if(reply->elements == 0) 
+        {
+            freeReplyObject(reply);
+            redisFree(context);
+            return NULL;
+        }
+
+        sw = atoi(reply->element[0]->str)/1000;
+        port = atoi(reply->element[0]->str)%1000;
+        // printf("sw:%u, outport:%u\n", sw, port);
+        // ctrl_id = sw;
+        // db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
+        // // 判断该出端口属于本区域交换机，向对应控制器发送通告
+        // // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
+        // if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
+        // {
+        //     cfd = fd[ctrl_id]; 
+        //     port2 = outport_src;
+        //     // add route to routes set <-> link
+        //     Add_Rt_Set((uint32_t)sw, (uint32_t)port, ip_src, ip_dst, num, redis_ip);
+        //     // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3(port2字段用于承载第二个出端口)
+        //     memset(buf, 0, BUFSIZE);
+        //     printf("源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
+        //     snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
+        //     printf("buf:%s\n",buf);
+        //     ret = send(cfd, buf, BUFSIZE, 0);
+        //     if (ret == -1)
+        //     {
+        //         print_err("send route failed", __LINE__, errno);
+        //         // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
+        //         Add_Wait_Exec(ctrl_id, buf, redis_ip);
+        //     }
+        // }
+        sw_pre = sw;
+
+        // 非源节点正常下发
+        for(i = 1; i < reply->elements; i++)
+        {
+            sw = atoi(reply->element[i]->str)/1000;
+            port = atoi(reply->element[i]->str)%1000;
+            // printf("sw:%u, outport:%u\n", sw, port);
+            ctrl_id = sw;
+            db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
+
+            // 判断该出端口属于本区域交换机，向对应控制器发送通告
+            // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
+            if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
+            {
+                cfd = fd_ctl[ctrl_id]; 
+                // printf("cfd:%ld\n", cfd);
+
+                // 入端口
+                port2 = sw_pre;
+                // add route to routes set <-> link
+                Add_Rt_Set((uint32_t)sw, (uint32_t)port, ip_src, ip_dst, 2, redis_ip);
+                
+                // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3(port2字段用于承载入端口)
+                memset(buf, 0, BUFSIZE);
+                printf("\t\t非源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
+                snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
+                printf("\t\tbuf:%s\n",buf);
+                ret = send(cfd, buf, BUFSIZE, 0);
+                if (ret == -1)
+                {
+                    print_err("\t\tsend route failed", __LINE__, errno);
+                    // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
+                    Add_Wait_Exec(ctrl_id, buf, redis_ip);
+                }
+            }
+            sw_pre = sw;
+        }
+    }
+
+    free(arg);
+    freeReplyObject(reply);
+    redisFree(context);
+    return NULL;
+}
+
+// 路由计算和调整
 void *work_thread(void *redis_ip)
 {
     // 校对topo将失效链路加入fail_link
@@ -233,6 +712,9 @@ void *work_thread(void *redis_ip)
     int path_new[MAX_NUM] = {0,}; // 第二次dijkstra的结果
     int path_1[MAX_NUM] = {0,}; // 链路分离路径1
     int path_2[MAX_NUM] = {0,}; // 链路分离路径2
+
+    int db_write_id = -1;
+    char db_write_ip[20] = "192.168.68.";  // 数据库IP
 
     // 读取拓扑
     printf("\tstart to read topo\n");
@@ -662,6 +1144,10 @@ void *work_thread(void *redis_ip)
                                 // printf("\n\n");
 
                                 // 向数据库写入2条新路由
+                                db_write_id = db_write_select();
+                                memset(&db_write_ip[11], 0, 9);
+                                sprintf(&db_write_ip[11], "%d", db_write_id+1);
+
                                 c = 0;
                                 while(path_1[c+1] != -1)
                                 {
@@ -669,7 +1155,7 @@ void *work_thread(void *redis_ip)
                                     strncpy(out_sw_port + c * 7, sw_port, 7);
                                     c++;
                                 }
-                                Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
+                                Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
                                 memset(out_sw_port, 0, CMD_MAX_LENGHT);
                                 // 间隔20ms
                                 usleep(20000);
@@ -680,12 +1166,12 @@ void *work_thread(void *redis_ip)
                                     strncpy(out_sw_port + c * 7, sw_port, 7);
                                     c++;
                                 }
-                                Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, redis_ip);
+                                Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, db_write_ip);
                                 memset(out_sw_port, 0, CMD_MAX_LENGHT);
  
                                 // add route to routes set <-> link
-                                Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_1[1], ip_src, ip_dst, 1, redis_ip);
-                                Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_2[1], ip_src, ip_dst, 2, redis_ip);
+                                Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_1[1], ip_src, ip_dst, 1, db_write_ip);
+                                Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_2[1], ip_src, ip_dst, 2, db_write_ip);
                                 // 通告源节点出端口
                                 ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
                                 memset(ip_src_thread, 0, sizeof(char));
@@ -709,13 +1195,13 @@ void *work_thread(void *redis_ip)
                                     c--;
                                     a++;
                                 }
-                                Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
+                                Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
                                 memset(out_sw_port, 0, CMD_MAX_LENGHT);
 
                                 c = 0;
                                 while(path[c+1] != -1) c++;
                                 // add route to routes set <-> link
-                                Add_Rt_Set((uint32_t)path[c], (uint32_t)path[c-1], ip_src, ip_dst, 1, redis_ip);
+                                Add_Rt_Set((uint32_t)path[c], (uint32_t)path[c-1], ip_src, ip_dst, 1, db_write_ip);
                                 // 通告源节点出端口
                                 ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
                                 memset(ip_src_thread, 0, sizeof(char));
@@ -857,9 +1343,9 @@ void *work_thread(void *redis_ip)
                         // 优雅关闭tcp套接字，通知控制器切换数据库
                         if(flag_fd[sw1] == 0)
                         {
-                            printf("\t\t\twait to shutdown ctrl_%d socket_%d\n", sw1, fd[sw1]);
+                            printf("\t\t\twait to shutdown ctrl_%d socket_%d\n", sw1, fd_ctl[sw1]);
                             // shutdown(fd[sw1], SHUT_WR);
-                            fd_close[fd_close_num++] = fd[sw1];
+                            fd_close[fd_close_num++] = fd_ctl[sw1];
                             flag_fd[sw1] = 1;
                         }
                     }
@@ -870,9 +1356,9 @@ void *work_thread(void *redis_ip)
                         // 优雅关闭tcp套接字，通知控制器切换数据库
                         if(flag_fd[sw2] == 0)
                         {
-                            printf("\t\t\twait to shutdown ctrl_%d socket_%d\n", sw2, fd[sw2]);
+                            printf("\t\t\twait to shutdown ctrl_%d socket_%d\n", sw2, fd_ctl[sw2]);
                             // shutdown(fd[sw2], SHUT_WR);
-                            fd_close[fd_close_num++] = fd[sw2];
+                            fd_close[fd_close_num++] = fd_ctl[sw2];
                             flag_fd[sw2] = 1;
                         }
                     }
@@ -892,7 +1378,7 @@ void *work_thread(void *redis_ip)
             {
                 if(flag_fd[j] == 1)
                 {
-                    fd[j] = 0;
+                    fd_ctl[j] = 0;
                 }
             }
             memset(flag_fd, 0, sizeof(flag_fd));
@@ -970,6 +1456,7 @@ void *work_thread(void *redis_ip)
     return NULL;
 }
 
+// udp 子线程，接收时间片序号
 void *udpconnect(void *redis_ip)
 {
     uint8_t buf[BUFSIZE] = {'\0'};
@@ -990,7 +1477,7 @@ void *udpconnect(void *redis_ip)
     while(1)
     {
         bzero(&buf, sizeof(buf));
-        recvfrom(server_fd, buf, BUFSIZE, 0, (struct sockaddr*)clent_addr, &len);
+        recvfrom(server_fd_udp, buf, BUFSIZE, 0, (struct sockaddr*)clent_addr, &len);
         slot = atoi(buf);
         // memset(fail_link_index, 0 , sizeof(fail_link_index));
         // 将下一个时间片对应的index归零
@@ -1010,227 +1497,6 @@ void *udpconnect(void *redis_ip)
         }
         printf("create work_thread success\n");
     }
-}
-
-// 用于d2d线程传参的结构体
-struct para
-{
-    void *obj;
-    void *redis_ip;
-};
-
-void *d2d_thread(void *arg)
-{
-    struct para *d2d_para;
-    d2d_para = (struct para *)arg;
-    char *obj = (*d2d_para).obj;
-    char *redis_ip = (*d2d_para).redis_ip;
-    int num = obj[IP_LEN*2+7] - '0';
-    printf("\tobj = %s, redis_ip = %s, num = %d\n", obj, redis_ip, num);
-
-    char cmd[CMD_MAX_LENGHT] = {0};
-    redisContext *context;
-    redisReply *reply;
-    int i = 0;
-    int ctrl_id = 0; // 记录控制器ID
-    int db_id = 0;
-    int sw, sw_pre = 999;
-    int port = 999;
-    long cfd = -1;
-    int ret = -1;
-    char buf[BUFSIZE] = {0};
-    char ip_src[IP_LEN+1] = {0,};
-    char ip_dst[IP_LEN+1] = {0,};
-    int port2 = 999; // 对于d2d路由，源节点的该字段存储第二个出端口，非源节点的该字段存储入端口
-    strncpy(ip_src, &obj[6], IP_LEN);
-    strncpy(ip_dst, &obj[6 + IP_LEN], IP_LEN);
-    printf("\tip_src = %s, ip_dst = %s\n", ip_src, ip_dst);
-    int outport_src = 999; // 记录源节点的第一条路由的出端口
-
-    // 等待各数据库收到相应的新增路由之后，再分发路由通告修改流表
-    sleep(5);
-
-    if(num == 1) // 直接下发
-    {
-        snprintf(cmd, CMD_MAX_LENGHT, "lrange %s 0 -1", obj);
-        context = redisConnect(redis_ip, REDIS_SERVER_PORT);
-        if (context->err)
-        { 
-            printf("\tError: %s\n", context->errstr);
-            redisFree(context);
-            return NULL;
-        }
-        // printf("connect redis server success\n");
-        reply = (redisReply *)redisCommand(context, cmd);
-        if (reply == NULL)
-        {
-            printf("\texecute command:%s failure\n", cmd);
-            redisFree(context);
-            return NULL;
-        }
-        if(reply->elements == 0) 
-        {
-            freeReplyObject(reply);
-            redisFree(context);
-            printf("\troute lookup failed\n");
-            return NULL;
-        }
-
-        sw = atoi(reply->element[0]->str)/1000;
-        port = atoi(reply->element[0]->str)%1000;
-        sw_pre = sw;
-
-        for(i = 1; i < reply->elements; i++)
-        {
-            sw = atoi(reply->element[i]->str)/1000;
-            port = atoi(reply->element[i]->str)%1000;
-            // printf("sw:%u, outport:%u\n", sw, port);
-            ctrl_id = sw;
-            db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
-
-            // 判断该出端口属于本区域交换机，向对应控制器发送通告
-            // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
-            if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
-            {
-                cfd = fd[ctrl_id]; 
-                // printf("cfd:%ld\n", cfd);
-
-                // 入端口
-                port2 = sw_pre;
-                // add route to routes set <-> link
-                Add_Rt_Set((uint32_t)sw, (uint32_t)port, ip_src, ip_dst, num, redis_ip);
-
-                // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3
-                memset(buf, 0, BUFSIZE);
-                printf("\t\t非源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
-                snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
-                printf("\t\tbuf:%s\n",buf);
-                ret = send(cfd, buf, BUFSIZE, 0);
-                if (ret == -1)
-                {
-                    print_err("\t\tsend route failed", __LINE__, errno);
-                    // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
-                    Add_Wait_Exec(ctrl_id, buf, redis_ip);
-                }
-            }
-            sw_pre = sw;
-        }
-    }
-    else if(num == 2) // 对于源节点，整合两条路径的出端口一起下发
-    {
-        context = redisConnect(redis_ip, REDIS_SERVER_PORT);
-        if (context->err)
-        { 
-            printf("\tError: %s\n", context->errstr);
-            redisFree(context);
-            return NULL;
-        }
-        // printf("connect redis server success\n");
-        
-        // obj[IP_LEN*2+7] = '1';
-        // snprintf(cmd, CMD_MAX_LENGHT, "lrange %s 0 -1", obj);
-        // reply = (redisReply *)redisCommand(context, cmd);
-        // if (reply == NULL)
-        // {
-        //     printf("execute command:%s failure\n", cmd);
-        //     redisFree(context);
-        //     return NULL;
-        // }
-        // if(reply->elements == 0) 
-        // {
-        //     freeReplyObject(reply);
-        //     redisFree(context);
-        //     return NULL;
-        // }
-        // outport_src = atoi(reply->element[0]->str)%1000;
-        // freeReplyObject(reply);
-
-        obj[IP_LEN*2+7] = '2';
-        snprintf(cmd, CMD_MAX_LENGHT, "lrange %s 0 -1", obj);
-        reply = (redisReply *)redisCommand(context, cmd);
-        if (reply == NULL)
-        {
-            printf("\texecute command:%s failure\n", cmd);
-            redisFree(context);
-            return NULL;
-        }
-        if(reply->elements == 0) 
-        {
-            freeReplyObject(reply);
-            redisFree(context);
-            return NULL;
-        }
-
-        sw = atoi(reply->element[0]->str)/1000;
-        port = atoi(reply->element[0]->str)%1000;
-        // printf("sw:%u, outport:%u\n", sw, port);
-        // ctrl_id = sw;
-        // db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
-        // // 判断该出端口属于本区域交换机，向对应控制器发送通告
-        // // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
-        // if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
-        // {
-        //     cfd = fd[ctrl_id]; 
-        //     port2 = outport_src;
-        //     // add route to routes set <-> link
-        //     Add_Rt_Set((uint32_t)sw, (uint32_t)port, ip_src, ip_dst, num, redis_ip);
-        //     // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3(port2字段用于承载第二个出端口)
-        //     memset(buf, 0, BUFSIZE);
-        //     printf("源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
-        //     snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
-        //     printf("buf:%s\n",buf);
-        //     ret = send(cfd, buf, BUFSIZE, 0);
-        //     if (ret == -1)
-        //     {
-        //         print_err("send route failed", __LINE__, errno);
-        //         // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
-        //         Add_Wait_Exec(ctrl_id, buf, redis_ip);
-        //     }
-        // }
-        sw_pre = sw;
-
-        // 非源节点正常下发
-        for(i = 1; i < reply->elements; i++)
-        {
-            sw = atoi(reply->element[i]->str)/1000;
-            port = atoi(reply->element[i]->str)%1000;
-            // printf("sw:%u, outport:%u\n", sw, port);
-            ctrl_id = sw;
-            db_id = Get_Ctrl_Conn_Db((uint32_t)ctrl_id, redis_ip);
-
-            // 判断该出端口属于本区域交换机，向对应控制器发送通告
-            // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
-            if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
-            {
-                cfd = fd[ctrl_id]; 
-                // printf("cfd:%ld\n", cfd);
-
-                // 入端口
-                port2 = sw_pre;
-                // add route to routes set <-> link
-                Add_Rt_Set((uint32_t)sw, (uint32_t)port, ip_src, ip_dst, 2, redis_ip);
-                
-                // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3(port2字段用于承载入端口)
-                memset(buf, 0, BUFSIZE);
-                printf("\t\t非源节点下发, db_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
-                snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
-                printf("\t\tbuf:%s\n",buf);
-                ret = send(cfd, buf, BUFSIZE, 0);
-                if (ret == -1)
-                {
-                    print_err("\t\tsend route failed", __LINE__, errno);
-                    // 发送失败表示控制器断开连接，将 buf 存入对应的待执行结构 wait_exec_X
-                    Add_Wait_Exec(ctrl_id, buf, redis_ip);
-                }
-            }
-            sw_pre = sw;
-        }
-    }
-
-    free(arg);
-    freeReplyObject(reply);
-    redisFree(context);
-    return NULL;
 }
 
 // 解析传入的路由条目，向相应的控制器发送新增流表项通告
@@ -1316,7 +1582,7 @@ int route_add(char *obj, char *redis_ip)
         // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
         if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
         {
-            cfd = fd[ctrl_id]; 
+            cfd = fd_ctl[ctrl_id]; 
             // printf("cfd:%ld\n", cfd);
 
             // 初始化999表示没有第二个出端口
@@ -1400,6 +1666,9 @@ int route_del(char *obj, int index, char *redis_ip)
     int path_new[MAX_NUM] = {0,}; // 第二次dijkstra的结果
     int path_1[MAX_NUM] = {0,}; // 链路分离路径1
     int path_2[MAX_NUM] = {0,}; // 链路分离路径2
+
+    int db_write_id = -1;
+    char db_write_ip[20] = "192.168.68.";  // 数据库IP
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "lindex %s %d", obj, index);
@@ -1821,6 +2090,10 @@ int route_del(char *obj, int index, char *redis_ip)
                         // printf("\n\n");
 
                         // 向数据库写入2条新路由
+                        db_write_id = db_write_select();
+                        memset(&db_write_ip[11], 0, 9);
+                        sprintf(&db_write_ip[11], "%d", db_write_id+1);
+
                         c = 0;
                         while(path_1[c+1] != -1)
                         {
@@ -1828,7 +2101,7 @@ int route_del(char *obj, int index, char *redis_ip)
                             strncpy(out_sw_port + c * 7, sw_port, 7);
                             c++;
                         }
-                        Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
+                        Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
                         memset(out_sw_port, 0, CMD_MAX_LENGHT);
                         // 间隔20ms
                         usleep(20000);
@@ -1839,12 +2112,12 @@ int route_del(char *obj, int index, char *redis_ip)
                             strncpy(out_sw_port + c * 7, sw_port, 7);
                             c++;
                         }
-                        Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, redis_ip);
+                        Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, db_write_ip);
                         memset(out_sw_port, 0, CMD_MAX_LENGHT);
 
                         // add route to routes set <-> link
-                        Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_1[1], ip_src, ip_dst, 1, redis_ip);
-                        Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_2[1], ip_src, ip_dst, 2, redis_ip);
+                        Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_1[1], ip_src, ip_dst, 1, db_write_ip);
+                        Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_2[1], ip_src, ip_dst, 2, db_write_ip);
                         // 通告源节点出端口
                         ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
                         memset(ip_src_thread, 0, sizeof(char));
@@ -1868,13 +2141,13 @@ int route_del(char *obj, int index, char *redis_ip)
                             c--;
                             a++;
                         }
-                        Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
+                        Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
                         memset(out_sw_port, 0, CMD_MAX_LENGHT);
 
                         c = 0;
                         while(path[c+1] != -1) c++;
                         // add route to routes set <-> link
-                        Add_Rt_Set((uint32_t)path[c], (uint32_t)path[c-1], ip_src, ip_dst, 1, redis_ip);
+                        Add_Rt_Set((uint32_t)path[c], (uint32_t)path[c-1], ip_src, ip_dst, 1, db_write_ip);
                         // 通告源节点出端口
                         ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
                         memset(ip_src_thread, 0, sizeof(char));
@@ -1898,10 +2171,10 @@ int route_del(char *obj, int index, char *redis_ip)
                 if( (strstr(ip_src, "44") == NULL) && (strstr(ip_dst, "44") != NULL) && (sw2 == db_id) )
                 {
                    // 关闭tcp套接字，通知控制器切换数据库
-                    if(fd[sw1] != 0)
+                    if(fd_ctl[sw1] != 0)
                     {
-                        printf("\t\t\tclose db->ctrl_%02d socket %d\n", sw1, fd[sw1]);
-                        close(fd[sw1]);
+                        printf("\t\t\tclose db->ctrl_%02d socket %d\n", sw1, fd_ctl[sw1]);
+                        close(fd_ctl[sw1]);
                     }
                 }
                 // 判断是 正在工作的 d2c控制通道路由
@@ -1909,14 +2182,14 @@ int route_del(char *obj, int index, char *redis_ip)
                 if( (strstr(ip_src, "44") != NULL) && (strstr(ip_dst, "44") == NULL) && (Get_Ctrl_Conn_Db((uint32_t)sw2, redis_ip) == db_id) )
                 {
                     // 关闭tcp套接字，通知控制器切换数据库
-                    if(fd[sw2] != 0)
+                    if(fd_ctl[sw2] != 0)
                     {
-                        printf("\t\t\tclose ctrl_%02d->db socket %d\n", sw2, fd[sw2]);
-                        close(fd[sw2]);
+                        printf("\t\t\tclose ctrl_%02d->db socket %d\n", sw2, fd_ctl[sw2]);
+                        close(fd_ctl[sw2]);
                     }
                 }
             
-                cfd = fd[ctrl_id];
+                cfd = fd_ctl[ctrl_id];
                 // printf("cfd:%ld\n", cfd);
                 // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3
                 memset(buf, 0, BUFSIZE);
@@ -2065,7 +2338,7 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
                 // DB_ID = (((inet_addr(redis_ip))&0xff000000)>>24) - 1
                 if(db_id == (((inet_addr(redis_ip))&0xff000000)>>24) - 1)
                 {
-                    cfd = fd[ctrl_id];
+                    cfd = fd_ctl[ctrl_id];
 
                     // 查询数据库，下发流表项
                     snprintf(cmd, CMD_MAX_LENGHT, "smembers %s", reply->element[3]->str);
@@ -2145,44 +2418,103 @@ int main(int argc, char **argv)
     long skfd = -1, ret = -1;
     char *redis_ip = *++argv;
     printf("redis_ip: %s\n", redis_ip);
+    int local_db_id = (((inet_addr(redis_ip))&0xff000000)>>24) -1;
+
+    memset(fd_db_client, -1, sizeof(fd_db_client));
+    memset(fd_db_server, -1, sizeof(fd_db_server));
+    memset(db_neighbor_list, -1, sizeof(db_neighbor_list));
+
+    // 读取数据库邻居信息
+    FILE *fp = NULL;
+    char ip_addr[20] = {0, };
+    int db_id = -1;
+    fp = fopen("./db_ip_file", "r");
+    int i, j = 0;
+    while(fscanf(fp, "%s", ip_addr) != EOF)
+    {
+        db_id = (((inet_addr(ip_addr))&0xff000000)>>24) -1;
+        if(db_id != local_db_id)
+        {
+            db_neighbor_list[j++] = db_id;
+        }
+    }
     
+    // 初始化TCP套接字
 	skfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (skfd == -1) 
     {
 		print_err("socket failed",__LINE__,errno);
 	}
-
-	struct sockaddr_in addr;
-	addr.sin_family = AF_INET; // 设置tcp协议族
-	addr.sin_port = htons(SERVER_PORT); // 设置端口号
-	addr.sin_addr.s_addr = inet_addr(redis_ip); // 设置ip地址
-
-	ret = bind(skfd, (struct sockaddr*)&addr, sizeof(addr));
+	struct sockaddr_in addr_1;
+	addr_1.sin_family = AF_INET; // 设置tcp协议族
+	addr_1.sin_port = htons(SERVER_PORT); // 设置端口号
+	addr_1.sin_addr.s_addr = inet_addr(redis_ip); // 设置ip地址
+	ret = bind(skfd, (struct sockaddr*)&addr_1, sizeof(addr_1));
 	if (ret == -1) 
     {
         print_err("bind failed",__LINE__,errno);
 	}
- 
-	ret = listen(skfd, 10);
+	ret = listen(skfd, 30);
+    if (ret == -1) 
+    {
+        print_err("listen failed", __LINE__, errno);
+	}
+
+    server_fd_tcp = socket(AF_INET, SOCK_STREAM, 0);
+	if (server_fd_tcp == -1) 
+    {
+		print_err("socket failed",__LINE__,errno);
+	}
+	struct sockaddr_in addr_2;
+	addr_2.sin_family = AF_INET; // 设置tcp协议族
+	addr_2.sin_port = htons(TCP_SERVER_PORT); // 设置端口号
+	addr_2.sin_addr.s_addr = inet_addr(redis_ip); // 设置ip地址
+	ret = bind(server_fd_tcp, (struct sockaddr*)&addr_2, sizeof(addr_2));
+	if (ret == -1) 
+    {
+        print_err("bind failed",__LINE__,errno);
+	}
+	ret = listen(server_fd_tcp, 10);
     if (ret == -1) 
     {
         print_err("listen failed", __LINE__, errno);
 	}
 	
-	pthread_t tcpid, udpid;
+	pthread_t tcpid_1, tcpid_2, tcpid_3, tcpid_4, udpid;
 	//创建子线程，使用accept阻塞监听客户端的连接
-    ret = pthread_create(&tcpid, NULL, tcpconnect, (void*)skfd);
+    ret = pthread_create(&tcpid_1, NULL, tcpconnect_ctl, (void*)skfd);
     if (ret == -1) 
     {
-        print_err("create tcpconnect failed", __LINE__, errno); 
+        print_err("create tcpconnect_ctl failed", __LINE__, errno); 
     }
+    ret = pthread_create(&tcpid_2, NULL, tcpconnect_db, NULL);
+    if (ret == -1) 
+    {
+        print_err("create tcpconnect_db failed", __LINE__, errno); 
+    }
+
+    // 创建子线程，主动连接数据库
+    for(i = 0; i < DB_NUM-1; i++)
+    {
+        ret = pthread_create(&tcpid_3, NULL, tcpconnect_client, (void*)i);
+        if (ret == -1) 
+        {
+            print_err("create tcpconnect_client failed", __LINE__, errno); 
+        }
+    }
+    // 创建子线程，监听数据库连接状态
+    ret = pthread_create(&tcpid_4, NULL, keep_alive, NULL);
+    if (ret == -1) 
+    {
+        print_err("create tcpconnect_client failed", __LINE__, errno); 
+    }
+
     //创建子线程，获取时间片序号slot
     ret = pthread_create(&udpid, NULL, udpconnect, redis_ip);
     if (ret == -1) 
     {
         print_err("create udpconnect failed", __LINE__, errno); 
     }
-
 
     signal(SIGPIPE, SIG_IGN);
     struct event_base *base = event_base_new(); // 创建libevent对象 alloc并返回一个带默认配置的event base
