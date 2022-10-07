@@ -127,7 +127,7 @@ void *tcpconnect_ctl(void *pth_arg)
 }
 
 // tcp 子线程，等待客户端（数据库）连接
-void *tcpconnect_db(void)
+void *tcpconnect_db(void *pth_arg)
 {
     // 使用accept阻塞形式得监听客户端的发来的连接，并返回通信描述符
 	long cfd = -1;
@@ -168,7 +168,7 @@ void *tcpconnect_client(void *pth_arg)
     int skfd = -1;
     struct sockaddr_in addr;
     char proxy_ip[20] = "192.168.68.";  // 数据库代理ip
-    int i = (int)pth_arg;
+    long i = (long)pth_arg;
 
     int keepAlive = 1; // 开启keepalive属性
     int keepIdle = 1; // 如该连接在1秒内没有任何数据往来,则进行探测 
@@ -181,6 +181,7 @@ void *tcpconnect_client(void *pth_arg)
         print_err("socket failed",__LINE__,errno);
     }
     addr.sin_family = AF_INET; //设置tcp协议族
+    addr.sin_port = htons(TCP_SERVER_PORT); // 设置端口号
     sprintf(&proxy_ip[11], "%d", db_neighbor_list[i]+1);
     addr.sin_addr.s_addr = inet_addr(proxy_ip); //设置ip地址
 
@@ -202,9 +203,10 @@ void *tcpconnect_client(void *pth_arg)
 
 // 利用主动连接其他数据库（服务端）的套接字
 // 测试数据库之间的TCP持续连接情况
-void *keep_alive(void)
+void *keep_alive(void *pth_arg)
 {
-    int i, j = 0;
+    long i = 0;
+    int j = 0;
     int skfd = -1;
     int maxfd = -1;
     int ret = -1;
@@ -230,64 +232,76 @@ void *keep_alive(void)
                 if(skfd > maxfd) maxfd = skfd+1;
             }
         }
-        
-        ret = select(maxfd, &read_fds, NULL, NULL, &timeout);
-        if(ret == -1)
-        {
-            print_err("select error",__LINE__,errno);
-        }
-        else if(ret == 0)
-        {
-            print_err("select tiemout",__LINE__,errno);
-        }
-        else if(ret > 0)
-        {
-            for(i = 0; i < DB_NUM-1; i++)
-            {
-                skfd = fd_db_server[db_neighbor_list[i]];
-                if(FD_ISSET(skfd, &read_fds))
-                {
-                    memset(buf, 0, BUFSIZE);
-                    ret_recv = recv(skfd, buf, BUFSIZE , 0);
-                    if(ret_recv == 0 || ret_recv == -1)
-                    {
-                        // 表示数据库断开连接
-                        keep_alive_flag[db_neighbor_list[i]] = 0;
-                        fd_db_server[db_neighbor_list[i]] = -1;
-                        close(skfd);
-                        // 重新连接
-                        ret = pthread_create(&tcpid, NULL, tcpconnect_client, (void*)i);
-                        if (ret == -1) 
-                        {
-                            print_err("create tcpconnect_client failed", __LINE__, errno); 
-                        }
-                    }
-                    else if(ret_recv > 0)
-                    {
-                        // 收到数据库邻接状态询问
-                        if(strstr(buf, "request") != NULL)
-                        {
-                            // 回复邻居（数据库）个数
-                            num = 0;
-                            for(j = 0; j < DB_NUM-1; j++)
-                            {
-                                if(keep_alive_flag[db_neighbor_list[j]] == 1)
-                                    num++;
-                            }
 
-                            memset(buf, 0, BUFSIZE);
-                            snprintf(buf, BUFSIZE, "%d", num);
-                            printf("\t\t\tbuf:%s\n", buf);
-                            ret = send(skfd, buf, BUFSIZE, 0);
-                            if (ret == -1)
+        if(maxfd != -1)
+        {
+            timeout.tv_sec = 2;
+            timeout.tv_usec = 0;
+            ret = select(maxfd, &read_fds, NULL, NULL, &timeout);
+            if(ret == -1)
+            {
+                print_err("select error",__LINE__,errno);
+                for(i = 0; i < DB_NUM-1; i++)
+                {
+                    printf("%d ", fd_db_server[db_neighbor_list[i]]);
+                }
+                printf("\n");
+            }
+            else if(ret == 0)
+            {
+                print_err("select tiemout",__LINE__,errno);
+            }
+            else if(ret > 0)
+            {
+                for(i = 0; i < DB_NUM-1; i++)
+                {
+                    skfd = fd_db_server[db_neighbor_list[i]];
+                    if(FD_ISSET(skfd, &read_fds))
+                    {
+                        memset(buf, 0, BUFSIZE);
+                        ret_recv = recv(skfd, buf, BUFSIZE , 0);
+                        if(ret_recv == 0 || ret_recv == -1)
+                        {
+                            // 表示数据库断开连接
+                            keep_alive_flag[db_neighbor_list[i]] = 0;
+                            fd_db_server[db_neighbor_list[i]] = -1;
+                            close(skfd);
+                            // 重新连接
+                            ret = pthread_create(&tcpid, NULL, tcpconnect_client, (void*)i);
+                            if (ret == -1) 
                             {
-                                print_err("\t\t\tsend keepalive info failed", __LINE__, errno);
+                                print_err("create tcpconnect_client failed", __LINE__, errno); 
+                            }
+                        }
+                        else if(ret_recv > 0)
+                        {
+                            // 收到数据库邻接状态询问
+                            if(strstr(buf, "request") != NULL)
+                            {
+                                // 回复邻居（数据库）个数
+                                num = 0;
+                                for(j = 0; j < DB_NUM-1; j++)
+                                {
+                                    if(keep_alive_flag[db_neighbor_list[j]] == 1)
+                                        num++;
+                                }
+
+                                memset(buf, 0, BUFSIZE);
+                                snprintf(buf, BUFSIZE, "%d", num);
+                                printf("\t\t\tbuf:%s\n", buf);
+                                ret = send(skfd, buf, BUFSIZE, 0);
+                                if (ret == -1)
+                                {
+                                    print_err("\t\t\tsend keepalive info failed", __LINE__, errno);
+                                }
                             }
                         }
                     }
                 }
             }
         }
+        else
+            sleep(1);
     }
 }
 
@@ -408,36 +422,46 @@ int db_write_select(void)
             }
         }
         
-        ret = select(maxfd, &read_fds, NULL, NULL, NULL); // 阻塞监听
-        if(ret == -1)
+        if(maxfd != -1)
         {
-            print_err("select error",__LINE__,errno);
-        }
-        else if(ret > 0)
-        {
-            max_num = 0;
-            db_id = -1;
-            for(i = 0; i < DB_NUM-1; i++)
+            ret = select(maxfd, &read_fds, NULL, NULL, NULL); // 阻塞监听
+            if(ret == -1)
             {
-                skfd = fd_db_client[db_neighbor_list[i]];
-                if(FD_ISSET(skfd, &read_fds))
+                print_err("select error",__LINE__,errno);
+                for(i = 0; i < DB_NUM-1; i++)
                 {
-                    memset(buf, 0, BUFSIZE);
-                    ret_recv = recv(skfd, buf, BUFSIZE , 0);
-                    if(ret_recv > 0)
+                    printf("%d ", fd_db_client[db_neighbor_list[i]]);
+                }
+                printf("\n");
+            }
+            else if(ret > 0)
+            {
+                max_num = 0;
+                db_id = -1;
+                for(i = 0; i < DB_NUM-1; i++)
+                {
+                    skfd = fd_db_client[db_neighbor_list[i]];
+                    if(FD_ISSET(skfd, &read_fds))
                     {
-                        // 收到数据库邻接状态回复
-                        num = buf[0] - '0';
-                        if(num > max_num)
+                        memset(buf, 0, BUFSIZE);
+                        ret_recv = recv(skfd, buf, BUFSIZE , 0);
+                        if(ret_recv > 0)
                         {
-                            max_num = num;
-                            db_id = db_neighbor_list[i];
+                            // 收到数据库邻接状态回复
+                            num = buf[0] - '0';
+                            if(num > max_num)
+                            {
+                                max_num = num;
+                                db_id = db_neighbor_list[i];
+                            }
                         }
                     }
                 }
+                return db_id;
             }
-            return db_id;
         }
+        else
+            sleep(1);
     }
 }
 
@@ -713,8 +737,8 @@ void *work_thread(void *redis_ip)
     int path_1[MAX_NUM] = {0,}; // 链路分离路径1
     int path_2[MAX_NUM] = {0,}; // 链路分离路径2
 
-    int db_write_id = -1;
-    char db_write_ip[20] = "192.168.68.";  // 数据库IP
+    // int db_write_id = -1;
+    // char db_write_ip[20] = "192.168.68.";  // 数据库IP
 
     // 读取拓扑
     printf("\tstart to read topo\n");
@@ -1144,9 +1168,9 @@ void *work_thread(void *redis_ip)
                                 // printf("\n\n");
 
                                 // 向数据库写入2条新路由
-                                db_write_id = db_write_select();
-                                memset(&db_write_ip[11], 0, 9);
-                                sprintf(&db_write_ip[11], "%d", db_write_id+1);
+                                // db_write_id = db_write_select();
+                                // memset(&db_write_ip[11], 0, 9);
+                                // sprintf(&db_write_ip[11], "%d", db_write_id+1);
 
                                 c = 0;
                                 while(path_1[c+1] != -1)
@@ -1155,7 +1179,7 @@ void *work_thread(void *redis_ip)
                                     strncpy(out_sw_port + c * 7, sw_port, 7);
                                     c++;
                                 }
-                                Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
+                                Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
                                 memset(out_sw_port, 0, CMD_MAX_LENGHT);
                                 // 间隔20ms
                                 usleep(20000);
@@ -1166,12 +1190,12 @@ void *work_thread(void *redis_ip)
                                     strncpy(out_sw_port + c * 7, sw_port, 7);
                                     c++;
                                 }
-                                Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, db_write_ip);
+                                Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, redis_ip);
                                 memset(out_sw_port, 0, CMD_MAX_LENGHT);
  
                                 // add route to routes set <-> link
-                                Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_1[1], ip_src, ip_dst, 1, db_write_ip);
-                                Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_2[1], ip_src, ip_dst, 2, db_write_ip);
+                                Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_1[1], ip_src, ip_dst, 1, redis_ip);
+                                Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_2[1], ip_src, ip_dst, 2, redis_ip);
                                 // 通告源节点出端口
                                 ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
                                 memset(ip_src_thread, 0, sizeof(char));
@@ -1195,13 +1219,13 @@ void *work_thread(void *redis_ip)
                                     c--;
                                     a++;
                                 }
-                                Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
+                                Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
                                 memset(out_sw_port, 0, CMD_MAX_LENGHT);
 
                                 c = 0;
                                 while(path[c+1] != -1) c++;
                                 // add route to routes set <-> link
-                                Add_Rt_Set((uint32_t)path[c], (uint32_t)path[c-1], ip_src, ip_dst, 1, db_write_ip);
+                                Add_Rt_Set((uint32_t)path[c], (uint32_t)path[c-1], ip_src, ip_dst, 1, redis_ip);
                                 // 通告源节点出端口
                                 ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
                                 memset(ip_src_thread, 0, sizeof(char));
@@ -2419,17 +2443,20 @@ int main(int argc, char **argv)
     char *redis_ip = *++argv;
     printf("redis_ip: %s\n", redis_ip);
     int local_db_id = (((inet_addr(redis_ip))&0xff000000)>>24) -1;
+    printf("local_db_id: %d\n", local_db_id);
 
     memset(fd_db_client, -1, sizeof(fd_db_client));
     memset(fd_db_server, -1, sizeof(fd_db_server));
     memset(db_neighbor_list, -1, sizeof(db_neighbor_list));
 
     // 读取数据库邻居信息
+    printf("读取数据库邻居信息\n");
     FILE *fp = NULL;
     char ip_addr[20] = {0, };
     int db_id = -1;
-    fp = fopen("./db_ip_file", "r");
-    int i, j = 0;
+    fp = fopen("/home/config/db_conf/db_ip_file", "r");
+    long i = 0;
+    int j = 0;
     while(fscanf(fp, "%s", ip_addr) != EOF)
     {
         db_id = (((inet_addr(ip_addr))&0xff000000)>>24) -1;
@@ -2440,6 +2467,7 @@ int main(int argc, char **argv)
     }
     
     // 初始化TCP套接字
+    printf("初始化TCP套接字\n");
 	skfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (skfd == -1) 
     {
@@ -2481,7 +2509,8 @@ int main(int argc, char **argv)
 	}
 	
 	pthread_t tcpid_1, tcpid_2, tcpid_3, tcpid_4, udpid;
-	//创建子线程，使用accept阻塞监听客户端的连接
+	// 创建子线程，使用accept阻塞监听客户端的连接
+    printf("创建子线程，使用accept阻塞监听客户端的连接\n");
     ret = pthread_create(&tcpid_1, NULL, tcpconnect_ctl, (void*)skfd);
     if (ret == -1) 
     {
@@ -2494,6 +2523,7 @@ int main(int argc, char **argv)
     }
 
     // 创建子线程，主动连接数据库
+    printf("创建子线程，主动连接数据库\n");
     for(i = 0; i < DB_NUM-1; i++)
     {
         ret = pthread_create(&tcpid_3, NULL, tcpconnect_client, (void*)i);
@@ -2503,6 +2533,7 @@ int main(int argc, char **argv)
         }
     }
     // 创建子线程，监听数据库连接状态
+    printf("创建子线程，监听数据库连接状态\n");
     ret = pthread_create(&tcpid_4, NULL, keep_alive, NULL);
     if (ret == -1) 
     {
@@ -2510,6 +2541,7 @@ int main(int argc, char **argv)
     }
 
     //创建子线程，获取时间片序号slot
+    printf("创建子线程，获取时间片序号slot\n");
     ret = pthread_create(&udpid, NULL, udpconnect, redis_ip);
     if (ret == -1) 
     {
