@@ -263,6 +263,7 @@ void *keep_alive(void *pth_arg)
                         if(ret_recv == 0 || ret_recv == -1)
                         {
                             // 表示数据库断开连接
+                            printf("数据库 %d 断开连接\n", db_neighbor_list[i]);
                             keep_alive_flag[db_neighbor_list[i]] = 0;
                             fd_db_server[db_neighbor_list[i]] = -1;
                             close(skfd);
@@ -828,9 +829,9 @@ void *work_thread(void *redis_ip)
                 //     continue;//中间节点不可达 
                 if(matrix[i][k] + matrix[k][j] < matrix[i][j])//经过中间节点，路径变短 
                 {
-                    printf("matrix[%02d][%02d]=%d,matrix[%02d][%02d]=%d,matrix[%02d][%02d]=%d\n",i,k,matrix[i][k],k,j,matrix[k][j],i,j,matrix[i][j]);
+                    // printf("matrix[%02d][%02d]=%d,matrix[%02d][%02d]=%d,matrix[%02d][%02d]=%d\n",i,k,matrix[i][k],k,j,matrix[k][j],i,j,matrix[i][j]);
                     matrix[i][j] = matrix[i][k] + matrix[k][j];
-                    printf("new matrix[%02d][%02d]=%d\n",i,j,matrix[i][j]);
+                    // printf("new matrix[%02d][%02d]=%d\n",i,j,matrix[i][j]);
                     if(matrix[i][j]<0) printf("matrix[%02d][%02d]小于零\n",i,j);
                     route[i][j] = k;
                 }
@@ -1013,7 +1014,8 @@ void *work_thread(void *redis_ip)
                             {
                                 for(b = 0; b < MAX_NUM; b++)
                                 {
-                                    matrix_new[a][b] = matrix_new[a][b] + node[a][1] - node[b][1];
+                                    if(matrix_new[a][b]!=MAX_DIST)
+                                        matrix_new[a][b] = matrix_new[a][b] + node[a][1] - node[b][1];
                                 }
                             }
                             curnode = sw2;
@@ -1030,14 +1032,14 @@ void *work_thread(void *redis_ip)
                                 path[c++] = curnode;
                             }
                             
-                            // printf("db%d - db%d: \n", sw1, sw2);
-                            // c = 0;
-                            // printf("\tpath: ");
-                            // while(path[c] != -1)
-                            // {
-                            //     printf("%d ", path[c++]);
-                            // }
-                            // printf("\n");
+                            printf("db%d - db%d: \n", sw1, sw2);
+                            c = 0;
+                            printf("\tpath: ");
+                            while(path[c] != -1)
+                            {
+                                printf("%d ", path[c++]);
+                            }
+                            printf("\n");
 
                             // 第二次Dijkstra计算
                             node_new[sw1][0] = 1;
@@ -1091,13 +1093,13 @@ void *work_thread(void *redis_ip)
                                     path_new[c++] = curnode;
                                 }
 
-                                // c = 0;
-                                // printf("\tpath_new: ");
-                                // while(path_new[c] != -1)
-                                // {
-                                //     printf("%d ", path_new[c++]);
-                                // }
-                                // printf("\n");
+                                c = 0;
+                                printf("\tpath_new: ");
+                                while(path_new[c] != -1)
+                                {
+                                    printf("%d ", path_new[c++]);
+                                }
+                                printf("\n");
 
                                 // 比较两条路径，删除重复部分
                                 a = 0;
@@ -1151,21 +1153,21 @@ void *work_thread(void *redis_ip)
                                     c++;
                                 }
                                 
-                                // printf("db%d - db%d: \n", sw1, sw2);
-                                // c = 0;
-                                // printf("\tpath_1: ");
-                                // while(path_1[c] != -1)
-                                // {
-                                //     printf("%d ", path_1[c++]);
-                                // }
-                                // printf("\n");
-                                // c = 0;
-                                // printf("\tpath_2: ");
-                                // while(path_2[c] != -1)
-                                // {
-                                //     printf("%d ", path_2[c++]);
-                                // }
-                                // printf("\n\n");
+                                printf("db%d - db%d: \n", sw1, sw2);
+                                c = 0;
+                                printf("\tdel_link d2d new path_1: ");
+                                while(path_1[c] != -1)
+                                {
+                                    printf("%d ", path_1[c++]);
+                                }
+                                printf("\n");
+                                c = 0;
+                                printf("\tdel_link d2d new path_2: ");
+                                while(path_2[c] != -1)
+                                {
+                                    printf("%d ", path_2[c++]);
+                                }
+                                printf("\n\n");
 
                                 // 向数据库写入2条新路由
                                 // db_write_id = db_write_select();
@@ -1207,7 +1209,7 @@ void *work_thread(void *redis_ip)
                             }
                             else
                             {
-                                printf("\t\t\tdijkstra_2 failed\n");
+                                printf("\t\t\tdel_link d2d new path_2 failed\n");
                                 // 向数据库写入1条新路由
                                 c = 0;
                                 while(path[c+1] != -1) c++;
@@ -1238,7 +1240,7 @@ void *work_thread(void *redis_ip)
                         }
                         else
                         {
-                            printf("\t\t\tSuurballe failed\n");
+                            printf("\t\t\tdel_link d2d new paths failed\n");
                         }
                         printf("\t\t\tfinish to run Suurballe\n");  
                     }
@@ -1959,7 +1961,8 @@ int route_del(char *obj, int index, char *redis_ip)
                     {
                         for(b = 0; b < MAX_NUM; b++)
                         {
-                            matrix_new[a][b] = matrix_new[a][b] + node[a][1] - node[b][1];
+                            if(matrix_new[a][b]!=MAX_DIST)
+                                matrix_new[a][b] = matrix_new[a][b] + node[a][1] - node[b][1];
                         }
                     }
                     curnode = sw2;
@@ -2097,21 +2100,21 @@ int route_del(char *obj, int index, char *redis_ip)
                             c++;
                         }
 
-                        // printf("db%d - db%d: \n", sw1, sw2);
-                        // c = 0;
-                        // printf("\tpath_1: ");
-                        // while(path_1[c] != -1)
-                        // {
-                        //     printf("%d ", path_1[c++]);
-                        // }
-                        // printf("\n");
-                        // c = 0;
-                        // printf("\tpath_2: ");
-                        // while(path_2[c] != -1)
-                        // {
-                        //     printf("%d ", path_2[c++]);
-                        // }
-                        // printf("\n\n");
+                        printf("db%d - db%d: \n", sw1, sw2);
+                        c = 0;
+                        printf("\tfail_link d2d new path_1: ");
+                        while(path_1[c] != -1)
+                        {
+                            printf("%d ", path_1[c++]);
+                        }
+                        printf("\n");
+                        c = 0;
+                        printf("\tfail_link d2d new path_2: ");
+                        while(path_2[c] != -1)
+                        {
+                            printf("%d ", path_2[c++]);
+                        }
+                        printf("\n\n");
 
                         // 向数据库写入2条新路由
                         db_write_id = db_write_select();
@@ -2153,7 +2156,7 @@ int route_del(char *obj, int index, char *redis_ip)
                     }
                     else
                     {
-                        printf("\t\t\tdijkstra_2 failed\n");
+                        printf("\t\t\tfail_link d2d new path_2 failed\n");
                         // 向数据库写入1条新路由
                         c = 0;
                         while(path[c+1] != -1) c++;
@@ -2184,7 +2187,7 @@ int route_del(char *obj, int index, char *redis_ip)
                 }
                 else
                 {
-                    printf("\t\t\tSuurballe failed\n");
+                    printf("\t\t\tfail_link d2d new paths failed\n");
                 }
                 printf("\t\t\tfinish to run Suurballe\n");              
             }
