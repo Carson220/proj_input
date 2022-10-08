@@ -18,6 +18,7 @@ RET_RESULT redis_connect(redisContext **context, char* redis_ip)
     
     if((*context)->err)
     {
+        printf("\tredis server ip: %s\n", redis_ip);
         printf("\t%d connect redis server failure:%s\n", __LINE__, (*context)->errstr);
         redisFree(*context);
         return FAILURE;

@@ -249,7 +249,7 @@ void *keep_alive(void *pth_arg)
             }
             else if(ret == 0)
             {
-                print_err("select tiemout",__LINE__,errno);
+                // print_err("select tiemout",__LINE__,errno);
             }
             else if(ret > 0)
             {
@@ -376,7 +376,7 @@ struct para
 };
 
 // 选择第三方数据库写入路由调整命令
-int db_write_select(void)
+int db_write_select(int target_id)
 {
     int i = 0;
     int skfd = -1;
@@ -450,7 +450,9 @@ int db_write_select(void)
                         {
                             // 收到数据库邻接状态回复
                             num = buf[0] - '0';
-                            if(num > max_num)
+                            printf("数据库 %d 邻居数量：%d\n", db_neighbor_list[i], num);
+                            // 不选对端数据库
+                            if((num > max_num) && (db_neighbor_list[i] != target_id) && (keep_alive_flag[db_neighbor_list[i]] == 1))
                             {
                                 max_num = num;
                                 db_id = db_neighbor_list[i];
@@ -1170,7 +1172,7 @@ void *work_thread(void *redis_ip)
                                 printf("\n\n");
 
                                 // 向数据库写入2条新路由
-                                // db_write_id = db_write_select();
+                                // db_write_id = db_write_select(sw2);
                                 // memset(&db_write_ip[11], 0, 9);
                                 // sprintf(&db_write_ip[11], "%d", db_write_id+1);
 
@@ -1211,6 +1213,10 @@ void *work_thread(void *redis_ip)
                             {
                                 printf("\t\t\tdel_link d2d new path_2 failed\n");
                                 // 向数据库写入1条新路由
+                                // db_write_id = db_write_select(sw2);
+                                // memset(&db_write_ip[11], 0, 9);
+                                // sprintf(&db_write_ip[11], "%d", db_write_id+1);
+
                                 c = 0;
                                 while(path[c+1] != -1) c++;
                                 a = 0;
@@ -2117,7 +2123,8 @@ int route_del(char *obj, int index, char *redis_ip)
                         printf("\n\n");
 
                         // 向数据库写入2条新路由
-                        db_write_id = db_write_select();
+                        db_write_id = db_write_select(sw2);
+                        printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
                         memset(&db_write_ip[11], 0, 9);
                         sprintf(&db_write_ip[11], "%d", db_write_id+1);
 
@@ -2158,6 +2165,11 @@ int route_del(char *obj, int index, char *redis_ip)
                     {
                         printf("\t\t\tfail_link d2d new path_2 failed\n");
                         // 向数据库写入1条新路由
+                        db_write_id = db_write_select(sw2);
+                        printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
+                        memset(&db_write_ip[11], 0, 9);
+                        sprintf(&db_write_ip[11], "%d", db_write_id+1);
+
                         c = 0;
                         while(path[c+1] != -1) c++;
                         a = 0;
@@ -2272,8 +2284,12 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
     {
         reply_str[i] = '\0';
     }
-    if (reply == NULL) return;
-
+    if(reply == NULL) 
+    {
+        printf("reply == NULL\n");
+        return;
+    }
+        
     char ip_two[3] = {0,}; // redis_ip最后两位
     int redis_id = -1;
     char slot_two[3] = {0,}; // fail_link最后两位
@@ -2291,7 +2307,7 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
     redisReply *reply1;
 
     // 订阅接收到的消息是一个带三元素的数组
-    if (reply->type == REDIS_REPLY_ARRAY && reply->elements == 3) 
+    if(reply->type == REDIS_REPLY_ARRAY && reply->elements == 3) 
     {
         if (strcmp( reply->element[0]->str, "psubscribe") == 0) 
         {
@@ -2301,9 +2317,8 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
                     reply->element[2]->str );
         }
     }
-
     // 订阅接收到的消息是一个带四元素的数组
-    if (reply->type == REDIS_REPLY_ARRAY && reply->elements == 4)
+    else if(reply->type == REDIS_REPLY_ARRAY && reply->elements == 4)
     {
         // printf("Recieved message: %s -- %s\n", 
         //         reply->element[2]->str,
@@ -2416,6 +2431,8 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
             }
         }
     }
+    else
+        printf("reply->type: %d, reply->elements: %d\n", (int)reply->type, (int)reply->elements);
 }
 
 // 远程连接回调函数
