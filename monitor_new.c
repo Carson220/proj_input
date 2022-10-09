@@ -741,8 +741,8 @@ void *work_thread(void *redis_ip)
     int path_1[MAX_NUM] = {0,}; // 链路分离路径1
     int path_2[MAX_NUM] = {0,}; // 链路分离路径2
 
-    // int db_write_id = -1;
-    // char db_write_ip[20] = "192.168.68.";  // 数据库IP
+    int db_write_id = -1;
+    char db_write_ip[20] = "192.168.68.";  // 数据库IP
 
     // 读取拓扑
     printf("\tstart to read topo\n");
@@ -899,7 +899,7 @@ void *work_thread(void *redis_ip)
             }
 
             // 输出查询结果
-            printf("\t\tdel route num = %lu\n",reply2->elements);
+            printf("\t\tdel_link_sw%02d_sw%02d route num = %lu\n",sw1, sw2, reply2->elements);
             if(reply2->elements == 0)
             {
                 freeReplyObject(reply2);
@@ -909,7 +909,7 @@ void *work_thread(void *redis_ip)
 
             for(k = 0; k < reply2->elements; k++)
             {
-                printf("\t\t\troute entry: %s\n",reply2->element[k]->str);
+                printf("\t\t\tdel_link route entry: %s\n",reply2->element[k]->str);
                 strncpy(ip_src_two, reply2->element[k]->str+6, 2);
                 sw = strtoi(ip_src_two, 2) - 1;
                 ctrl_id = sw;
@@ -1035,14 +1035,14 @@ void *work_thread(void *redis_ip)
                                 path[c++] = curnode;
                             }
                             
-                            printf("db%d - db%d: \n", sw1, sw2);
-                            c = 0;
-                            printf("\tpath: ");
-                            while(path[c] != -1)
-                            {
-                                printf("%d ", path[c++]);
-                            }
-                            printf("\n");
+                            // printf("db%d - db%d: \n", sw1, sw2);
+                            // c = 0;
+                            // printf("\tpath: ");
+                            // while(path[c] != -1)
+                            // {
+                            //     printf("%d ", path[c++]);
+                            // }
+                            // printf("\n");
 
                             // 第二次Dijkstra计算
                             node_new[sw1][0] = 1;
@@ -1096,13 +1096,13 @@ void *work_thread(void *redis_ip)
                                     path_new[c++] = curnode;
                                 }
 
-                                c = 0;
-                                printf("\tpath_new: ");
-                                while(path_new[c] != -1)
-                                {
-                                    printf("%d ", path_new[c++]);
-                                }
-                                printf("\n");
+                                // c = 0;
+                                // printf("\tpath_new: ");
+                                // while(path_new[c] != -1)
+                                // {
+                                //     printf("%d ", path_new[c++]);
+                                // }
+                                // printf("\n");
 
                                 // 比较两条路径，删除重复部分
                                 a = 0;
@@ -1173,9 +1173,10 @@ void *work_thread(void *redis_ip)
                                 printf("\n\n");
 
                                 // 向数据库写入2条新路由
-                                // db_write_id = db_write_select(sw2);
-                                // memset(&db_write_ip[11], 0, 9);
-                                // sprintf(&db_write_ip[11], "%d", db_write_id+1);
+                                db_write_id = db_write_select(sw2);
+                                printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
+                                memset(&db_write_ip[11], 0, 9);
+                                sprintf(&db_write_ip[11], "%d", db_write_id+1);
 
                                 c = 0;
                                 while(path_1[c+1] != -1)
@@ -1214,9 +1215,10 @@ void *work_thread(void *redis_ip)
                             {
                                 printf("\t\t\tdel_link d2d new path_2 failed\n");
                                 // 向数据库写入1条新路由
-                                // db_write_id = db_write_select(sw2);
-                                // memset(&db_write_ip[11], 0, 9);
-                                // sprintf(&db_write_ip[11], "%d", db_write_id+1);
+                                db_write_id = db_write_select(sw2);
+                                printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
+                                memset(&db_write_ip[11], 0, 9);
+                                sprintf(&db_write_ip[11], "%d", db_write_id+1);
 
                                 c = 0;
                                 while(path[c+1] != -1) c++;
@@ -1878,7 +1880,7 @@ int route_del(char *obj, int index, char *redis_ip)
     {
         tmp_time = localtime(&t);
         strftime(s, sizeof(s), "%04Y%02m%02d %H:%M:%S", tmp_time);
-        printf("\t\t%s fail route entry: %s\n",s, reply->element[i]->str);
+        printf("\t\t%s fail_link route entry: %s\n",s, reply->element[i]->str);
         strncpy(ip_src_two, reply->element[i]->str+6, 2);
         sw = strtoi(ip_src_two, 2) - 1;
         ctrl_id = sw;
