@@ -21,6 +21,7 @@
 #include <pthread.h>
 #include <netinet/tcp.h>
 #include "db_wr.h"
+#include <time.h>
 
 #define MAX_NUM 66
 #define SLOT_NUM 44
@@ -1555,6 +1556,11 @@ int route_add(char *obj, char *redis_ip)
     strncpy(ip_dst, &obj[6 + IP_LEN], IP_LEN);
     num = obj[IP_LEN*2+7] - '0';
 
+    time_t t;
+    time(&t);
+    struct tm *tmp_time = localtime(&t);
+    char s[100];
+
     // 判断是d2d路由
     if(((strstr(ip_dst, "44") != NULL) && (strstr(ip_src, "44") != NULL)))
     {
@@ -1626,7 +1632,9 @@ int route_add(char *obj, char *redis_ip)
             memset(buf, 0, BUFSIZE);
             printf("\tdb_id:%d, ctrl_id:%d, sw:%d, ip_src:%s, ip_dst:%s, port:%d, port2:%d\n", db_id, ctrl_id, sw, ip_src, ip_dst, port, port2);
             snprintf(buf, BUFSIZE, "%d%03d%s%s%03d%03d", ROUTE_ADD, sw, ip_src, ip_dst, port, port2);
-            printf("\tbuf:%s\n",buf);
+            tmp_time = localtime(&t);
+            strftime(s, sizeof(s), "%04Y%02m%02d %H:%M:%S", tmp_time);
+            printf("\t%s buf:%s\n", s, buf);
             ret = send(cfd, buf, BUFSIZE, 0);
             if (ret == -1)
             {
@@ -1701,6 +1709,10 @@ int route_del(char *obj, int index, char *redis_ip)
 
     int db_write_id = -1;
     char db_write_ip[20] = "192.168.68.";  // 数据库IP
+    time_t t;
+    time(&t);
+    struct tm *tmp_time = localtime(&t);
+    char s[100];
 
     /*组装Redis命令*/
     snprintf(cmd, CMD_MAX_LENGHT, "lindex %s %d", obj, index);
@@ -1864,7 +1876,9 @@ int route_del(char *obj, int index, char *redis_ip)
     }
     for(i = 0; i < reply->elements; i++)
     {
-        printf("\t\tfail route entry: %s\n",reply->element[i]->str);
+        tmp_time = localtime(&t);
+        strftime(s, sizeof(s), "%04Y%02m%02d %H:%M:%S", tmp_time);
+        printf("\t\t%s fail route entry: %s\n",s, reply->element[i]->str);
         strncpy(ip_src_two, reply->element[i]->str+6, 2);
         sw = strtoi(ip_src_two, 2) - 1;
         ctrl_id = sw;
@@ -2261,6 +2275,9 @@ int route_del(char *obj, int index, char *redis_ip)
                         snprintf(sw_port, 8, "%03d%03d ", nextsw[j], nextsw[j+1]);
                         strncpy(out_sw_port + j * 7, sw_port, 7);
                     }
+                    tmp_time = localtime(&t);
+                    strftime(s, sizeof(s), "%04Y%02m%02d %H:%M:%S", tmp_time);
+                    printf("%s write new route %s%s_1 to db\n", s, ip_src, ip_dst);
                     Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
                     memset(out_sw_port, 0, CMD_MAX_LENGHT);
                 }
@@ -2280,6 +2297,11 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
     int i = 0;
     redisReply *reply = (redisReply*)r;
     char *reply_str = malloc(sizeof(char)*26);
+    time_t t;
+    time(&t);
+    struct tm *tmp_time = localtime(&t);
+    char s[100];
+
     for(i = 0; i < 26; i++)
     {
         reply_str[i] = '\0';
@@ -2329,7 +2351,9 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
         {
             if(strstr(reply->element[3]->str, "calrt") != NULL)
             {
-                printf("Recieved message: %s -- %s\n", 
+                tmp_time = localtime(&t);
+                strftime(s, sizeof(s), "%04Y%02m%02d %H:%M:%S", tmp_time);
+                printf("%s Recieved message: %s -- %s\n", s,
                 reply->element[2]->str,
                 reply->element[3]->str);
 
@@ -2343,7 +2367,9 @@ void psubCallback(redisAsyncContext *c, void *r, void *redis_ip)
             // 判断是fail_link
             else if(strstr(reply->element[3]->str, "fail_link") != NULL) 
             {
-                printf("Recieved message: %s -- %s\n", 
+                tmp_time = localtime(&t);
+                strftime(s, sizeof(s), "%04Y%02m%02d %H:%M:%S", tmp_time);
+                printf("%s Recieved message: %s -- %s\n", s, 
                 reply->element[2]->str,
                 reply->element[3]->str);
                 
