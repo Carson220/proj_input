@@ -589,54 +589,71 @@ RET_RESULT Add_Wait_Exec(uint32_t ctrl, char *buf, char* redis_ip)
     redisContext *context=NULL;
     redisReply *reply=NULL;
 
-    /*组装redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "sismember wait_exec_%02d %s", ctrl, buf);
+    // /*组装redis命令*/
+    // snprintf(cmd, CMD_MAX_LENGHT, "sismember wait_exec_%02d %s", ctrl, buf);
 
-    /*连接redis*/
-    redis_connect(&context, redis_ip);
+    // /*连接redis*/
+    // redis_connect(&context, redis_ip);
+
+    // /*执行redis命令*/
+    // reply = (redisReply *)redisCommand(context, cmd);
+    // if (NULL == reply)
+    // {
+    //     printf("\t%d execute command:%s failure\n", __LINE__, cmd);
+    //     redisFree(context);
+    //     return FAILURE;
+    // }
+
+    // //输出查询结果
+    // if(reply->integer == 1)
+    // {
+    //     printf("\twait_exec_ctrl%02d buf:%s exist\n", ctrl, buf);
+    //     freeReplyObject(reply);
+    //     redisFree(context);
+    //     return SUCCESS;
+    // }
+    // else
+    // {
+    //     /*组装redis命令*/
+    //     snprintf(cmd, CMD_MAX_LENGHT, "sadd wait_exec_%02d %s", ctrl, buf);
+
+    //     /*执行redis命令*/
+    //     if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
+    //     {
+    //         printf("\tadd wait_exec_ctrl%02d buf:%s failure\n", ctrl, buf);
+    //         freeReplyObject(reply);
+    //         redisFree(context);
+    //         return FAILURE;
+    //     }
+    //     printf("\tadd wait_exec_ctrl%02d buf:%s success\n", ctrl, buf);
+    //     freeReplyObject(reply);
+    //     redisFree(context);
+    //     return SUCCESS;
+    // }
+
+    /*组装redis命令*/
+    snprintf(cmd, CMD_MAX_LENGHT, "rpush wait_exec_%02d %s", ctrl, buf);
 
     /*执行redis命令*/
-    reply = (redisReply *)redisCommand(context, cmd);
-    if (NULL == reply)
+    if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
     {
-        printf("\t%d execute command:%s failure\n", __LINE__, cmd);
+        printf("\tadd wait_exec_ctrl%02d buf:%s failure\n", ctrl, buf);
+        freeReplyObject(reply);
         redisFree(context);
         return FAILURE;
     }
-
-    //输出查询结果
-    if(reply->integer == 1)
-    {
-        printf("\twait_exec_ctrl%02d buf:%s exist\n", ctrl, buf);
-        freeReplyObject(reply);
-        redisFree(context);
-        return SUCCESS;
-    }
-    else
-    {
-        /*组装redis命令*/
-        snprintf(cmd, CMD_MAX_LENGHT, "sadd wait_exec_%02d %s", ctrl, buf);
-
-        /*执行redis命令*/
-        if (FAILURE == exeRedisIntCmd(cmd, redis_ip))
-        {
-            printf("\tadd wait_exec_ctrl%02d buf:%s failure\n", ctrl, buf);
-            freeReplyObject(reply);
-            redisFree(context);
-            return FAILURE;
-        }
-        printf("\tadd wait_exec_ctrl%02d buf:%s success\n", ctrl, buf);
-        freeReplyObject(reply);
-        redisFree(context);
-        return SUCCESS;
-    }
+    printf("\tadd wait_exec_ctrl%02d buf:%s success\n", ctrl, buf);
+    freeReplyObject(reply);
+    redisFree(context);
+    return SUCCESS;
 }
 
 RET_RESULT Del_Wait_Exec(uint32_t ctrl, char *buf, char* redis_ip)
 {
     char cmd[CMD_MAX_LENGHT] = {0};
     /*组装redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "srem wait_exec_%02d %s", ctrl, buf);
+    // snprintf(cmd, CMD_MAX_LENGHT, "srem wait_exec_%02d %s", ctrl, buf);
+    snprintf(cmd, CMD_MAX_LENGHT, "lpop wait_exec_%02d", ctrl);
 
     /*执行redis命令*/
     if (FAILURE == exeRedisIntCmd(cmd, redis_ip))

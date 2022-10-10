@@ -2690,8 +2690,8 @@ void psubCallback_rpush_fail_link(redisAsyncContext *c, void *r, void *redis_ip)
     }
 }
 
-// 订阅监听 sadd 操作回调函数
-void psubCallback_sadd(redisAsyncContext *c, void *r, void *redis_ip) 
+// 订阅监听 rpush wait 操作回调函数
+void psubCallback_rpush_wait(redisAsyncContext *c, void *r, void *redis_ip) 
 {
     int i = 0;
     redisReply *reply = (redisReply*)r;
@@ -2745,8 +2745,8 @@ void psubCallback_sadd(redisAsyncContext *c, void *r, void *redis_ip)
         //         reply->element[2]->str,
         //         reply->element[3]->str);
 
-        // 判断操作是否为sadd
-        if(strstr(reply->element[2]->str, "sadd") != NULL)
+        // 判断操作是否为rpush
+        if(strstr(reply->element[2]->str, "rpush") != NULL)
         {
             if(strstr(reply->element[3]->str, "wait_exec") != NULL)
             {
@@ -2765,7 +2765,8 @@ void psubCallback_sadd(redisAsyncContext *c, void *r, void *redis_ip)
                     cfd = fd_ctl[ctrl_id];
 
                     // 查询数据库，下发流表项
-                    snprintf(cmd, CMD_MAX_LENGHT, "smembers %s", reply->element[3]->str);
+                    // snprintf(cmd, CMD_MAX_LENGHT, "smembers %s", reply->element[3]->str);
+                    snprintf(cmd, CMD_MAX_LENGHT, "lrange %s 0 -1", reply->element[3]->str);
                     context1 = redisConnect(redis_ip, REDIS_SERVER_PORT);
                     if (context1->err)
                     {
@@ -3064,7 +3065,7 @@ void *asyncmd_rpush_fail_link(void *redis_ip)
     printf("quit!\n");
 }
 
-void *asyncmd_sadd(void *redis_ip)
+void *asyncmd_rpush_wait(void *redis_ip)
 {
     signal(SIGPIPE, SIG_IGN);
     struct event_base *base = event_base_new(); // 创建libevent对象 alloc并返回一个带默认配置的event base
@@ -3083,7 +3084,7 @@ void *asyncmd_sadd(void *redis_ip)
     // redisAsyncCommand(c, psubCallback, redis_ip, "psubscribe __key*__:*");
     // redisAsyncCommand(c, psubCallback_rpush_calrt, redis_ip, "psubscribe __keyevent@0__:rpush");
     // redisAsyncCommand(c, psubCallback_rpush_fail_link, redis_ip, "psubscribe __keyevent@0__:rpush");
-    redisAsyncCommand(c, psubCallback_sadd, redis_ip, "psubscribe __keyevent@0__:sadd");
+    redisAsyncCommand(c, psubCallback_rpush_wait, redis_ip, "psubscribe __keyevent@0__:rpush");
 
     // 开启事件分发，event_base_dispatch会阻塞
     event_base_dispatch(base); // 运行event_base，直到没有event被注册在event_base中为止
@@ -3215,7 +3216,7 @@ int main(int argc, char **argv)
     {
         print_err("create asyncmd_rpush_fail_link failed", __LINE__, errno); 
     }
-    ret = pthread_create(&pid, NULL, asyncmd_sadd, redis_ip);
+    ret = pthread_create(&pid, NULL, asyncmd_rpush_wait, redis_ip);
     if (ret == -1) 
     {
         print_err("create asyncmd_sadd failed", __LINE__, errno); 
