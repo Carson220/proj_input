@@ -349,7 +349,8 @@ void route_notice(int db_id, int sw, char *ip_src, char *ip_dst, int port1, int 
     // printf("sw:%u, port1:%u, port2:%u\n", sw, port1, port2);
 
     // 等待路由同步到各个数据库之后再下发
-    sleep(5);
+    // 改为将d2d路由写入第三方数据库之后，不需要利用旧的d2d路由进行数据库同步，因此无需等待太长时间
+    sleep(2);
     cfd = fd_ctl[sw];
 
     // type:1,sw:3,ip_src:8,ip_dst:8,outport:3,port2:3(port2字段用于承载第二个出端口)
@@ -461,7 +462,11 @@ int db_write_select(int target_id)
                         }
                     }
                 }
-                return db_id;
+                if(max_num == DB_NUM-1)
+                    return db_id;
+                // 第三方数据库并非全连接
+                else
+                    return -1;
             }
         }
         else
@@ -499,7 +504,8 @@ void *d2d_thread(void *arg)
     int outport_src = 999; // 记录源节点的第一条路由的出端口
 
     // 等待各数据库收到相应的新增路由之后，再分发路由通告修改流表
-    sleep(5);
+    // 改为将d2d路由写入第三方数据库之后，不需要利用旧的d2d路由进行数据库同步，因此无需等待
+    sleep(2);
 
     if(num == 1) // 直接下发
     {
@@ -697,7 +703,7 @@ void *work_thread(void *redis_ip)
     redisReply *reply, *reply1, *reply2;
     uint64_t sw;
     uint32_t sw1, sw2;
-    int i, j, k, a, b, c = 0;
+    int i, j, k, a, b, c, d = 0;
     int ctrl_id = 0; // 记录控制器ID
     int db_id = 0;
     long cfd = -1;
@@ -1172,79 +1178,193 @@ void *work_thread(void *redis_ip)
                                 }
                                 printf("\n\n");
 
-                                // 向数据库写入2条新路由
+                                // 向数据库写入2条新路由                              
                                 db_write_id = db_write_select(sw2);
-                                printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
-                                memset(&db_write_ip[11], 0, 9);
-                                sprintf(&db_write_ip[11], "%d", db_write_id+1);
+                                if(db_write_id != -1)
+                                {
+                                    printf("\t\ttarget_id: %d, db_write_id: %d\n", sw2, db_write_id);
+                                    memset(&db_write_ip[11], 0, 9);
+                                    sprintf(&db_write_ip[11], "%d", db_write_id+1);
 
-                                c = 0;
-                                while(path_1[c+1] != -1)
-                                {
-                                    snprintf(sw_port, 8, "%03d%03d ", path_1[c], path_1[c+1]);
-                                    strncpy(out_sw_port + c * 7, sw_port, 7);
-                                    c++;
+                                    c = 0;
+                                    while(path_1[c+1] != -1)
+                                    {
+                                        snprintf(sw_port, 8, "%03d%03d ", path_1[c], path_1[c+1]);
+                                        strncpy(out_sw_port + c * 7, sw_port, 7);
+                                        c++;
+                                    }
+                                    Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
+                                    memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                                    // 间隔20ms
+                                    usleep(20000);
+                                    c = 0;
+                                    while(path_2[c+1] != -1)
+                                    {
+                                        snprintf(sw_port, 8, "%03d%03d ", path_2[c], path_2[c+1]);
+                                        strncpy(out_sw_port + c * 7, sw_port, 7);
+                                        c++;
+                                    }
+                                    Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, db_write_ip);
+                                    memset(out_sw_port, 0, CMD_MAX_LENGHT);
+    
+                                    // add route to routes set <-> link
+                                    Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_1[1], ip_src, ip_dst, 1, db_write_ip);
+                                    Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_2[1], ip_src, ip_dst, 2, db_write_ip);
+                                    // 通告源节点出端口
+                                    ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
+                                    memset(ip_src_thread, 0, sizeof(char));
+                                    ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
+                                    memset(ip_dst_thread, 0, sizeof(char));
+                                    strncpy(ip_src_thread, ip_src, IP_LEN);
+                                    strncpy(ip_dst_thread, ip_dst, IP_LEN);
+                                    route_notice(db_id, path_1[0], ip_src_thread, ip_dst_thread, path_1[1], path_2[1], redis_ip);
                                 }
-                                Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
-                                memset(out_sw_port, 0, CMD_MAX_LENGHT);
-                                // 间隔20ms
-                                usleep(20000);
-                                c = 0;
-                                while(path_2[c+1] != -1)
+                                // 如果第三方数据库并非全连接，则广播d2d新路由
+                                else
                                 {
-                                    snprintf(sw_port, 8, "%03d%03d ", path_2[c], path_2[c+1]);
-                                    strncpy(out_sw_port + c * 7, sw_port, 7);
-                                    c++;
-                                }
-                                Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, redis_ip);
-                                memset(out_sw_port, 0, CMD_MAX_LENGHT);
- 
-                                // add route to routes set <-> link
-                                Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_1[1], ip_src, ip_dst, 1, redis_ip);
-                                Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_2[1], ip_src, ip_dst, 2, redis_ip);
-                                // 通告源节点出端口
-                                ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
-                                memset(ip_src_thread, 0, sizeof(char));
-                                ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
-                                memset(ip_dst_thread, 0, sizeof(char));
-                                strncpy(ip_src_thread, ip_src, IP_LEN);
-                                strncpy(ip_dst_thread, ip_dst, IP_LEN);
-                                route_notice(db_id, path_1[0], ip_src_thread, ip_dst_thread, path_1[1], path_2[1], redis_ip);
+                                    printf("\t\ttarget_id: %d, db_write_id: all\n", sw2);
+                                    
+                                    c = 0;
+                                    while(path_1[c+1] != -1)
+                                    {
+                                        snprintf(sw_port, 8, "%03d%03d ", path_1[c], path_1[c+1]);
+                                        strncpy(out_sw_port + c * 7, sw_port, 7);
+                                        c++;
+                                    }
+                                    
+                                    for(d = 0; d < DB_NUM-1; d++)
+                                    {
+                                        if((db_neighbor_list[d] != sw2) && (keep_alive_flag[db_neighbor_list[d]] == 1))
+                                        {
+                                            db_write_id = db_neighbor_list[d];
+                                            // printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
+                                            memset(&db_write_ip[11], 0, 9);
+                                            sprintf(&db_write_ip[11], "%d", db_write_id+1);
+                                            Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
+                                        }
+                                    }
+
+                                    memset(out_sw_port, 0, CMD_MAX_LENGHT);
+
+                                    // 间隔20ms
+                                    usleep(20000);
+
+                                    c = 0;
+                                    while(path_2[c+1] != -1)
+                                    {
+                                        snprintf(sw_port, 8, "%03d%03d ", path_2[c], path_2[c+1]);
+                                        strncpy(out_sw_port + c * 7, sw_port, 7);
+                                        c++;
+                                    }
+
+                                    for(d = 0; d < DB_NUM-1; d++)
+                                    {
+                                        if((db_neighbor_list[d] != sw2) && (keep_alive_flag[db_neighbor_list[d]] == 1))
+                                        {
+                                            db_write_id = db_neighbor_list[d];
+                                            // printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
+                                            memset(&db_write_ip[11], 0, 9);
+                                            sprintf(&db_write_ip[11], "%d", db_write_id+1);
+                                            Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, db_write_ip);
+                                            // add route to routes set <-> link
+                                            Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_1[1], ip_src, ip_dst, 1, db_write_ip);
+                                            Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_2[1], ip_src, ip_dst, 2, db_write_ip);
+                                        }
+                                    }
+
+                                    memset(out_sw_port, 0, CMD_MAX_LENGHT);
+    
+                                    // 通告源节点出端口
+                                    ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
+                                    memset(ip_src_thread, 0, sizeof(char));
+                                    ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
+                                    memset(ip_dst_thread, 0, sizeof(char));
+                                    strncpy(ip_src_thread, ip_src, IP_LEN);
+                                    strncpy(ip_dst_thread, ip_dst, IP_LEN);
+                                    route_notice(db_id, path_1[0], ip_src_thread, ip_dst_thread, path_1[1], path_2[1], redis_ip);
+                                }                                
                             }
                             else
                             {
                                 printf("\t\t\tdel_link d2d new path_2 failed\n");
                                 // 向数据库写入1条新路由
                                 db_write_id = db_write_select(sw2);
-                                printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
-                                memset(&db_write_ip[11], 0, 9);
-                                sprintf(&db_write_ip[11], "%d", db_write_id+1);
-
-                                c = 0;
-                                while(path[c+1] != -1) c++;
-                                a = 0;
-                                while(c > 0)
+                                if(db_write_id != -1)
                                 {
-                                    snprintf(sw_port, 8, "%03d%03d ", path[c], path[c-1]);
-                                    strncpy(out_sw_port + a * 7, sw_port, 7);
-                                    c--;
-                                    a++;
-                                }
-                                Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, redis_ip);
-                                memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                                    printf("\t\ttarget_id: %d, db_write_id: %d\n", sw2, db_write_id);
+                                    memset(&db_write_ip[11], 0, 9);
+                                    sprintf(&db_write_ip[11], "%d", db_write_id+1);
 
-                                c = 0;
-                                while(path[c+1] != -1) c++;
-                                // add route to routes set <-> link
-                                Add_Rt_Set((uint32_t)path[c], (uint32_t)path[c-1], ip_src, ip_dst, 1, redis_ip);
-                                // 通告源节点出端口
-                                ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
-                                memset(ip_src_thread, 0, sizeof(char));
-                                ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
-                                memset(ip_dst_thread, 0, sizeof(char));
-                                strncpy(ip_src_thread, ip_src, IP_LEN);
-                                strncpy(ip_dst_thread, ip_src, IP_LEN);
-                                route_notice(db_id, path[c], ip_src_thread, ip_dst_thread, path[c-1], 999, redis_ip);
+                                    c = 0;
+                                    while(path[c+1] != -1) c++;
+                                    a = 0;
+                                    while(c > 0)
+                                    {
+                                        snprintf(sw_port, 8, "%03d%03d ", path[c], path[c-1]);
+                                        strncpy(out_sw_port + a * 7, sw_port, 7);
+                                        c--;
+                                        a++;
+                                    }
+                                    Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
+                                    memset(out_sw_port, 0, CMD_MAX_LENGHT);
+
+                                    c = 0;
+                                    while(path[c+1] != -1) c++;
+                                    // add route to routes set <-> link
+                                    Add_Rt_Set((uint32_t)path[c], (uint32_t)path[c-1], ip_src, ip_dst, 1, db_write_ip);
+                                    // 通告源节点出端口
+                                    ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
+                                    memset(ip_src_thread, 0, sizeof(char));
+                                    ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
+                                    memset(ip_dst_thread, 0, sizeof(char));
+                                    strncpy(ip_src_thread, ip_src, IP_LEN);
+                                    strncpy(ip_dst_thread, ip_src, IP_LEN);
+                                    route_notice(db_id, path[c], ip_src_thread, ip_dst_thread, path[c-1], 999, redis_ip);
+                                }
+                                // 如果第三方数据库并非全连接，则广播d2d新路由
+                                else
+                                {
+                                    printf("\t\ttarget_id: %d, db_write_id: all\n", sw2);
+                                    
+                                    c = 0;
+                                    while(path[c+1] != -1) c++;
+                                    a = 0;
+                                    while(c > 0)
+                                    {
+                                        snprintf(sw_port, 8, "%03d%03d ", path[c], path[c-1]);
+                                        strncpy(out_sw_port + a * 7, sw_port, 7);
+                                        c--;
+                                        a++;
+                                    }
+                                    
+                                    c = 0;
+                                    while(path[c+1] != -1) c++;
+
+                                    for(d = 0; d < DB_NUM-1; d++)
+                                    {
+                                        if((db_neighbor_list[d] != sw2) && (keep_alive_flag[db_neighbor_list[d]] == 1))
+                                        {
+                                            db_write_id = db_neighbor_list[d];
+                                            // printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
+                                            memset(&db_write_ip[11], 0, 9);
+                                            sprintf(&db_write_ip[11], "%d", db_write_id+1);
+                                            Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
+                                            // add route to routes set <-> link
+                                            Add_Rt_Set((uint32_t)path[c], (uint32_t)path[c-1], ip_src, ip_dst, 1, db_write_ip);
+                                        }
+                                    }
+                                    
+                                    memset(out_sw_port, 0, CMD_MAX_LENGHT);
+
+                                    // 通告源节点出端口
+                                    ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
+                                    memset(ip_src_thread, 0, sizeof(char));
+                                    ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
+                                    memset(ip_dst_thread, 0, sizeof(char));
+                                    strncpy(ip_src_thread, ip_src, IP_LEN);
+                                    strncpy(ip_dst_thread, ip_src, IP_LEN);
+                                    route_notice(db_id, path[c], ip_src_thread, ip_dst_thread, path[c-1], 999, redis_ip);
+                                }
                             }
                         }
                         else
@@ -1660,7 +1780,7 @@ int route_del(char *obj, int index, char *redis_ip)
     char cmd[CMD_MAX_LENGHT] = {0};
     redisContext *context;
     redisReply *reply;
-    int i, j, k, a, b, c = 0;
+    int i, j, k, a, b, c, d = 0;
     int ctrl_id = 0; // 记录控制器ID
     int db_id = 0;
     uint32_t sw1, sw2 = 0;
@@ -2140,77 +2260,191 @@ int route_del(char *obj, int index, char *redis_ip)
 
                         // 向数据库写入2条新路由
                         db_write_id = db_write_select(sw2);
-                        printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
-                        memset(&db_write_ip[11], 0, 9);
-                        sprintf(&db_write_ip[11], "%d", db_write_id+1);
-
-                        c = 0;
-                        while(path_1[c+1] != -1)
+                        if(db_write_id != -1)
                         {
-                            snprintf(sw_port, 8, "%03d%03d ", path_1[c], path_1[c+1]);
-                            strncpy(out_sw_port + c * 7, sw_port, 7);
-                            c++;
-                        }
-                        Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
-                        memset(out_sw_port, 0, CMD_MAX_LENGHT);
-                        // 间隔20ms
-                        usleep(20000);
-                        c = 0;
-                        while(path_2[c+1] != -1)
-                        {
-                            snprintf(sw_port, 8, "%03d%03d ", path_2[c], path_2[c+1]);
-                            strncpy(out_sw_port + c * 7, sw_port, 7);
-                            c++;
-                        }
-                        Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, db_write_ip);
-                        memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                            printf("\t\ttarget_id: %d, db_write_id: %d\n", sw2, db_write_id);
+                            memset(&db_write_ip[11], 0, 9);
+                            sprintf(&db_write_ip[11], "%d", db_write_id+1);
 
-                        // add route to routes set <-> link
-                        Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_1[1], ip_src, ip_dst, 1, db_write_ip);
-                        Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_2[1], ip_src, ip_dst, 2, db_write_ip);
-                        // 通告源节点出端口
-                        ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
-                        memset(ip_src_thread, 0, sizeof(char));
-                        ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
-                        memset(ip_dst_thread, 0, sizeof(char));
-                        strncpy(ip_src_thread, ip_src, IP_LEN);
-                        strncpy(ip_dst_thread, ip_dst, IP_LEN);
-                        route_notice(db_id, path_1[0], ip_src_thread, ip_dst_thread, path_1[1], path_2[1], redis_ip);
+                            c = 0;
+                            while(path_1[c+1] != -1)
+                            {
+                                snprintf(sw_port, 8, "%03d%03d ", path_1[c], path_1[c+1]);
+                                strncpy(out_sw_port + c * 7, sw_port, 7);
+                                c++;
+                            }
+                            Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
+                            memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                            // 间隔20ms
+                            usleep(20000);
+                            c = 0;
+                            while(path_2[c+1] != -1)
+                            {
+                                snprintf(sw_port, 8, "%03d%03d ", path_2[c], path_2[c+1]);
+                                strncpy(out_sw_port + c * 7, sw_port, 7);
+                                c++;
+                            }
+                            Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, db_write_ip);
+                            memset(out_sw_port, 0, CMD_MAX_LENGHT);
+
+                            // add route to routes set <-> link
+                            Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_1[1], ip_src, ip_dst, 1, db_write_ip);
+                            Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_2[1], ip_src, ip_dst, 2, db_write_ip);
+                            // 通告源节点出端口
+                            ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
+                            memset(ip_src_thread, 0, sizeof(char));
+                            ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
+                            memset(ip_dst_thread, 0, sizeof(char));
+                            strncpy(ip_src_thread, ip_src, IP_LEN);
+                            strncpy(ip_dst_thread, ip_dst, IP_LEN);
+                            route_notice(db_id, path_1[0], ip_src_thread, ip_dst_thread, path_1[1], path_2[1], redis_ip);
+                        }
+                        // 如果第三方数据库并非全连接，则广播d2d新路由
+                        else
+                        {
+                            printf("\t\ttarget_id: %d, db_write_id: all\n", sw2);
+                            
+                            c = 0;
+                            while(path_1[c+1] != -1)
+                            {
+                                snprintf(sw_port, 8, "%03d%03d ", path_1[c], path_1[c+1]);
+                                strncpy(out_sw_port + c * 7, sw_port, 7);
+                                c++;
+                            }
+
+                            for(d = 0; d < DB_NUM-1; d++)
+                            {
+                                if((db_neighbor_list[d] != sw2) && (keep_alive_flag[db_neighbor_list[d]] == 1))
+                                {
+                                    db_write_id = db_neighbor_list[d];
+                                    // printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
+                                    memset(&db_write_ip[11], 0, 9);
+                                    sprintf(&db_write_ip[11], "%d", db_write_id+1);
+                                    Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
+                                }
+                            }
+                            
+                            memset(out_sw_port, 0, CMD_MAX_LENGHT);
+
+                            // 间隔20ms
+                            usleep(20000);
+
+                            c = 0;
+                            while(path_2[c+1] != -1)
+                            {
+                                snprintf(sw_port, 8, "%03d%03d ", path_2[c], path_2[c+1]);
+                                strncpy(out_sw_port + c * 7, sw_port, 7);
+                                c++;
+                            }
+
+                            for(d = 0; d < DB_NUM-1; d++)
+                            {
+                                if((db_neighbor_list[d] != sw2) && (keep_alive_flag[db_neighbor_list[d]] == 1))
+                                {
+                                    db_write_id = db_neighbor_list[d];
+                                    // printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
+                                    memset(&db_write_ip[11], 0, 9);
+                                    sprintf(&db_write_ip[11], "%d", db_write_id+1);
+                                    Set_Cal_Route(ip_src, ip_dst, 2, out_sw_port, db_write_ip);
+                                    // add route to routes set <-> link
+                                    Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_1[1], ip_src, ip_dst, 1, db_write_ip);
+                                    Add_Rt_Set((uint32_t)path_1[0], (uint32_t)path_2[1], ip_src, ip_dst, 2, db_write_ip);
+                                }
+                            }
+                        
+                            memset(out_sw_port, 0, CMD_MAX_LENGHT);
+
+                            // 通告源节点出端口
+                            ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
+                            memset(ip_src_thread, 0, sizeof(char));
+                            ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
+                            memset(ip_dst_thread, 0, sizeof(char));
+                            strncpy(ip_src_thread, ip_src, IP_LEN);
+                            strncpy(ip_dst_thread, ip_dst, IP_LEN);
+                            route_notice(db_id, path_1[0], ip_src_thread, ip_dst_thread, path_1[1], path_2[1], redis_ip);
+                        }
                     }
                     else
                     {
                         printf("\t\t\tfail_link d2d new path_2 failed\n");
                         // 向数据库写入1条新路由
                         db_write_id = db_write_select(sw2);
-                        printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
-                        memset(&db_write_ip[11], 0, 9);
-                        sprintf(&db_write_ip[11], "%d", db_write_id+1);
-
-                        c = 0;
-                        while(path[c+1] != -1) c++;
-                        a = 0;
-                        while(c > 0)
+                        if(db_write_id != -1)
                         {
-                            snprintf(sw_port, 8, "%03d%03d ", path[c], path[c-1]);
-                            strncpy(out_sw_port + a * 7, sw_port, 7);
-                            c--;
-                            a++;
-                        }
-                        Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
-                        memset(out_sw_port, 0, CMD_MAX_LENGHT);
+                            printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
+                            memset(&db_write_ip[11], 0, 9);
+                            sprintf(&db_write_ip[11], "%d", db_write_id+1);
 
-                        c = 0;
-                        while(path[c+1] != -1) c++;
-                        // add route to routes set <-> link
-                        Add_Rt_Set((uint32_t)path[c], (uint32_t)path[c-1], ip_src, ip_dst, 1, db_write_ip);
-                        // 通告源节点出端口
-                        ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
-                        memset(ip_src_thread, 0, sizeof(char));
-                        ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
-                        memset(ip_dst_thread, 0, sizeof(char));
-                        strncpy(ip_src_thread, ip_src, IP_LEN);
-                        strncpy(ip_dst_thread, ip_src, IP_LEN);
-                        route_notice(db_id, path[c], ip_src_thread, ip_dst_thread, path[c-1], 999, redis_ip);
+                            c = 0;
+                            while(path[c+1] != -1) c++;
+                            a = 0;
+                            while(c > 0)
+                            {
+                                snprintf(sw_port, 8, "%03d%03d ", path[c], path[c-1]);
+                                strncpy(out_sw_port + a * 7, sw_port, 7);
+                                c--;
+                                a++;
+                            }
+                            Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
+                            memset(out_sw_port, 0, CMD_MAX_LENGHT);
+
+                            c = 0;
+                            while(path[c+1] != -1) c++;
+                            // add route to routes set <-> link
+                            Add_Rt_Set((uint32_t)path[c], (uint32_t)path[c-1], ip_src, ip_dst, 1, db_write_ip);
+                            // 通告源节点出端口
+                            ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
+                            memset(ip_src_thread, 0, sizeof(char));
+                            ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
+                            memset(ip_dst_thread, 0, sizeof(char));
+                            strncpy(ip_src_thread, ip_src, IP_LEN);
+                            strncpy(ip_dst_thread, ip_src, IP_LEN);
+                            route_notice(db_id, path[c], ip_src_thread, ip_dst_thread, path[c-1], 999, redis_ip);
+                        }
+                        // 如果第三方数据库并非全连接，则广播d2d新路由
+                        else
+                        {
+                            printf("\t\ttarget_id: %d, db_write_id: all\n", sw2);
+                            
+                            c = 0;
+                            while(path[c+1] != -1) c++;
+                            a = 0;
+                            while(c > 0)
+                            {
+                                snprintf(sw_port, 8, "%03d%03d ", path[c], path[c-1]);
+                                strncpy(out_sw_port + a * 7, sw_port, 7);
+                                c--;
+                                a++;
+                            }
+
+                            c = 0;
+                            while(path[c+1] != -1) c++;
+
+                            for(d = 0; d < DB_NUM-1; d++)
+                            {
+                                if((db_neighbor_list[d] != sw2) && (keep_alive_flag[db_neighbor_list[d]] == 1))
+                                {
+                                    db_write_id = db_neighbor_list[d];
+                                    // printf("target_id: %d, db_write_id: %d\n", sw2, db_write_id);
+                                    memset(&db_write_ip[11], 0, 9);
+                                    sprintf(&db_write_ip[11], "%d", db_write_id+1);
+                                    Set_Cal_Route(ip_src, ip_dst, 1, out_sw_port, db_write_ip);
+                                    // add route to routes set <-> link
+                                    Add_Rt_Set((uint32_t)path[c], (uint32_t)path[c-1], ip_src, ip_dst, 1, db_write_ip);
+                                }
+                            }
+                            
+                            memset(out_sw_port, 0, CMD_MAX_LENGHT);
+
+                            // 通告源节点出端口
+                            ip_src_thread = malloc(sizeof(char)*(IP_LEN+1));
+                            memset(ip_src_thread, 0, sizeof(char));
+                            ip_dst_thread = malloc(sizeof(char)*(IP_LEN+1));
+                            memset(ip_dst_thread, 0, sizeof(char));
+                            strncpy(ip_src_thread, ip_src, IP_LEN);
+                            strncpy(ip_dst_thread, ip_src, IP_LEN);
+                            route_notice(db_id, path[c], ip_src_thread, ip_dst_thread, path[c-1], 999, redis_ip);
+                        }
                     }
                 }
                 else
