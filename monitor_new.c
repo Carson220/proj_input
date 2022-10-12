@@ -2816,6 +2816,210 @@ void psubCallback_rpush_wait(redisAsyncContext *c, void *r, void *redis_ip)
     }
 }
 
+// 订阅监听 srem rt_set 操作回调函数
+void psubCallback_srem_rt_set(redisAsyncContext *c, void *r, void *redis_ip) 
+{
+    int i = 0;
+    redisReply *reply = (redisReply*)r;
+    char *reply_str = malloc(sizeof(char)*26);
+    time_t t;
+    time(&t);
+    struct tm *tmp_time = localtime(&t);
+    char s[100];
+
+    for(i = 0; i < 26; i++)
+    {
+        reply_str[i] = '\0';
+    }
+    if(reply == NULL) 
+    {
+        printf("reply == NULL\n");
+        return;
+    }
+        
+    char ip_two[3] = {0,}; // redis_ip最后两位
+    int redis_id = -1;
+    char slot_two[3] = {0,}; // fail_link最后两位
+    int slot_id = -1;
+
+    int ctrl_id = 0;  // 记录控制器ID
+    char ctrl_str[3] = {0,};
+    int db_id = 0;
+    long cfd = -1;
+    int ret = -1;
+    int index = -1;
+    char buf[BUFSIZE] = {0,};
+    char cmd[CMD_MAX_LENGHT] = {0};
+    redisContext *context1;
+    redisReply *reply1;
+
+    // 订阅接收到的消息是一个带三元素的数组
+    if(reply->type == REDIS_REPLY_ARRAY && reply->elements == 3) 
+    {
+        if (strcmp( reply->element[0]->str, "psubscribe") == 0) 
+        {
+            printf( "Received[%s] channel %s: %s\n",
+                    "psub",
+                    reply->element[1]->str,
+                    reply->element[2]->str );
+        }
+    }
+    // 订阅接收到的消息是一个带四元素的数组
+    else if(reply->type == REDIS_REPLY_ARRAY && reply->elements == 4)
+    {
+        // printf("Recieved message: %s -- %s\n", 
+        //         reply->element[2]->str,
+        //         reply->element[3]->str);
+
+        // 判断操作是否为srem
+        if(strstr(reply->element[2]->str, "srem") != NULL)
+        {
+            if(strstr(reply->element[3]->str, "rt_set") != NULL)
+            {
+                printf("Recieved message: %s -- %s ", 
+                reply->element[2]->str,
+                reply->element[3]->str);
+                
+                // 查询数据库
+                snprintf(cmd, CMD_MAX_LENGHT, "smembers %s", reply->element[3]->str);
+                context1 = redisConnect(redis_ip, REDIS_SERVER_PORT);
+                if (context1->err)
+                {
+                    printf("Error: %s\n", context1->errstr);
+                    redisFree(context1);
+                    return;
+                }
+                // printf("connect redis server success\n");
+                reply1 = (redisReply *)redisCommand(context1, cmd);
+                if (reply1 == NULL)
+                {
+                    printf("execute command:%s failure\n", cmd);
+                    redisFree(context1);
+                    return;
+                }
+
+                // 输出查询结果
+                printf("%s entry num = %lu\n", reply->element[3]->str, reply1->elements);
+                if(reply1->elements == 0) 
+                {
+                    freeReplyObject(reply1);
+                    redisFree(context1);
+                    return;
+                }
+                // for(i = 0; i < reply1->elements; i++)
+                // {
+                //     printf("\trt_%d: %s\n", i+1, reply1->element[i]->str);
+                // }
+                
+                freeReplyObject(reply1);
+                redisFree(context1);
+            }
+        }
+    }
+}
+
+// 订阅监听 sadd rt_set 操作回调函数
+void psubCallback_sadd_rt_set(redisAsyncContext *c, void *r, void *redis_ip) 
+{
+    int i = 0;
+    redisReply *reply = (redisReply*)r;
+    char *reply_str = malloc(sizeof(char)*26);
+    time_t t;
+    time(&t);
+    struct tm *tmp_time = localtime(&t);
+    char s[100];
+
+    for(i = 0; i < 26; i++)
+    {
+        reply_str[i] = '\0';
+    }
+    if(reply == NULL) 
+    {
+        printf("reply == NULL\n");
+        return;
+    }
+        
+    char ip_two[3] = {0,}; // redis_ip最后两位
+    int redis_id = -1;
+    char slot_two[3] = {0,}; // fail_link最后两位
+    int slot_id = -1;
+
+    int ctrl_id = 0;  // 记录控制器ID
+    char ctrl_str[3] = {0,};
+    int db_id = 0;
+    long cfd = -1;
+    int ret = -1;
+    int index = -1;
+    char buf[BUFSIZE] = {0,};
+    char cmd[CMD_MAX_LENGHT] = {0};
+    redisContext *context1;
+    redisReply *reply1;
+
+    // 订阅接收到的消息是一个带三元素的数组
+    if(reply->type == REDIS_REPLY_ARRAY && reply->elements == 3) 
+    {
+        if (strcmp( reply->element[0]->str, "psubscribe") == 0) 
+        {
+            printf( "Received[%s] channel %s: %s\n",
+                    "psub",
+                    reply->element[1]->str,
+                    reply->element[2]->str );
+        }
+    }
+    // 订阅接收到的消息是一个带四元素的数组
+    else if(reply->type == REDIS_REPLY_ARRAY && reply->elements == 4)
+    {
+        // printf("Recieved message: %s -- %s\n", 
+        //         reply->element[2]->str,
+        //         reply->element[3]->str);
+
+        // 判断操作是否为srem
+        if(strstr(reply->element[2]->str, "sadd") != NULL)
+        {
+            if(strstr(reply->element[3]->str, "rt_set") != NULL)
+            {
+                printf("Recieved message: %s -- %s\n", 
+                reply->element[2]->str,
+                reply->element[3]->str);
+                
+                // 查询数据库
+                snprintf(cmd, CMD_MAX_LENGHT, "smembers %s", reply->element[3]->str);
+                context1 = redisConnect(redis_ip, REDIS_SERVER_PORT);
+                if (context1->err)
+                {
+                    printf("Error: %s\n", context1->errstr);
+                    redisFree(context1);
+                    return;
+                }
+                // printf("connect redis server success\n");
+                reply1 = (redisReply *)redisCommand(context1, cmd);
+                if (reply1 == NULL)
+                {
+                    printf("execute command:%s failure\n", cmd);
+                    redisFree(context1);
+                    return;
+                }
+
+                // 输出查询结果
+                printf("%s entry num = %lu\n", reply->element[3]->str, reply1->elements);
+                if(reply1->elements == 0) 
+                {
+                    freeReplyObject(reply1);
+                    redisFree(context1);
+                    return;
+                }
+                // for(i = 0; i < reply1->elements; i++)
+                // {
+                //     printf("\trt_%d: %s\n", i+1, reply1->element[i]->str);
+                // }
+                
+                freeReplyObject(reply1);
+                redisFree(context1);
+            }
+        }
+    }
+}
+
 // 订阅监听回调函数
 /*
 void psubCallback(redisAsyncContext *c, void *r, void *redis_ip) 
@@ -3092,6 +3296,62 @@ void *asyncmd_rpush_wait(void *redis_ip)
     printf("quit!\n");
 }
 
+void *asyncmd_srem_rt_set(void *redis_ip)
+{
+    signal(SIGPIPE, SIG_IGN);
+    struct event_base *base = event_base_new(); // 创建libevent对象 alloc并返回一个带默认配置的event base
+
+    redisAsyncContext *c = redisAsyncConnect(redis_ip, REDIS_SERVER_PORT);
+    if (c->err) 
+    {
+        printf("Error: %s\n", c->errstr);
+        return NULL;
+    }
+
+    redisLibeventAttach(c,base); // 将事件绑定到redis context上，使设置给redis的回调跟事件关联
+
+    redisAsyncSetConnectCallback(c,connectCallback); // 设置连接回调，当异步调用连接后，服务器处理连接请求结束后调用，通知调用者连接的状态
+    redisAsyncSetDisconnectCallback(c,disconnectCallback); // 设置断开连接回调，当服务器断开连接后，通知调用者连接断开，调用者可以利用这个函数实现重连
+    // redisAsyncCommand(c, psubCallback, redis_ip, "psubscribe __key*__:*");
+    // redisAsyncCommand(c, psubCallback_rpush_calrt, redis_ip, "psubscribe __keyevent@0__:rpush");
+    // redisAsyncCommand(c, psubCallback_rpush_fail_link, redis_ip, "psubscribe __keyevent@0__:rpush");
+    // redisAsyncCommand(c, psubCallback_rpush_wait, redis_ip, "psubscribe __keyevent@0__:rpush");
+    redisAsyncCommand(c, psubCallback_srem_rt_set, redis_ip, "psubscribe __keyevent@0__:srem");
+
+    // 开启事件分发，event_base_dispatch会阻塞
+    event_base_dispatch(base); // 运行event_base，直到没有event被注册在event_base中为止
+
+    printf("quit!\n");
+}
+
+void *asyncmd_sadd_rt_set(void *redis_ip)
+{
+    signal(SIGPIPE, SIG_IGN);
+    struct event_base *base = event_base_new(); // 创建libevent对象 alloc并返回一个带默认配置的event base
+
+    redisAsyncContext *c = redisAsyncConnect(redis_ip, REDIS_SERVER_PORT);
+    if (c->err) 
+    {
+        printf("Error: %s\n", c->errstr);
+        return NULL;
+    }
+
+    redisLibeventAttach(c,base); // 将事件绑定到redis context上，使设置给redis的回调跟事件关联
+
+    redisAsyncSetConnectCallback(c,connectCallback); // 设置连接回调，当异步调用连接后，服务器处理连接请求结束后调用，通知调用者连接的状态
+    redisAsyncSetDisconnectCallback(c,disconnectCallback); // 设置断开连接回调，当服务器断开连接后，通知调用者连接断开，调用者可以利用这个函数实现重连
+    // redisAsyncCommand(c, psubCallback, redis_ip, "psubscribe __key*__:*");
+    // redisAsyncCommand(c, psubCallback_rpush_calrt, redis_ip, "psubscribe __keyevent@0__:rpush");
+    // redisAsyncCommand(c, psubCallback_rpush_fail_link, redis_ip, "psubscribe __keyevent@0__:rpush");
+    // redisAsyncCommand(c, psubCallback_rpush_wait, redis_ip, "psubscribe __keyevent@0__:rpush");
+    redisAsyncCommand(c, psubCallback_sadd_rt_set, redis_ip, "psubscribe __keyevent@0__:sadd");
+
+    // 开启事件分发，event_base_dispatch会阻塞
+    event_base_dispatch(base); // 运行event_base，直到没有event被注册在event_base中为止
+
+    printf("quit!\n");
+}
+
 int main(int argc, char **argv) 
 {
     long skfd = -1, ret = -1;
@@ -3219,7 +3479,18 @@ int main(int argc, char **argv)
     ret = pthread_create(&pid, NULL, asyncmd_rpush_wait, redis_ip);
     if (ret == -1) 
     {
-        print_err("create asyncmd_sadd failed", __LINE__, errno); 
+        print_err("create asyncmd_rpush_wait failed", __LINE__, errno); 
+    }
+
+    ret = pthread_create(&pid, NULL, asyncmd_srem_rt_set, redis_ip);
+    if (ret == -1) 
+    {
+        print_err("create asyncmd_srem_rt_set failed", __LINE__, errno); 
+    }
+    ret = pthread_create(&pid, NULL, asyncmd_sadd_rt_set, redis_ip);
+    if (ret == -1) 
+    {
+        print_err("create asyncmd_sadd_rt_set failed", __LINE__, errno); 
     }
 
     while(1)
