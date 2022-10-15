@@ -3,43 +3,62 @@
 *   描    述：用于向Redis数据库进行读写操作
 
 1、设置交换机的默认主控制器 "hset active_ctrl_%02d %u %u", slot, sw, ctrl
+    (deleted)
 2、设置交换机的默认备用控制器 "hset standby_ctrl_%02d %u %u", slot, sw, ctrl
+    (deleted)
 3、设置控制器的默认数据库 "hset db_%02d %u %u", slot, ctrl, db
+    (revised)设置控制器当前连接的数据库 "hset ctrl_conn_db %u %u", slot, ctrl, db
 
 // 维护controller当前连接的sw集合，db代理分发路由时需要查询结果，发送给相应的控制器
 // 可采用set数据结构存储，https://blog.csdn.net/Xiejingfa/article/details/50594005
 4、交换机连接控制器后，将该交换机添加到对应控制器的控制集合中 "sadd sw_set_%02d_%02d %u", ctrl, slot, sw
     (revised)交换机断开连接后，记录该交换机连接的对应控制器 "hset conn_ctrl %u %u", sw, ctrl
+    (deleted)
 5、交换机断开连接后，将该交换机从对应控制器的控制集合中删除 "srem sw_set_%02d_%02d %u", ctrl, slot, sw
     (revised)交换机断开连接后，记录该交换机未连接控制器 "hset conn_ctrl %u -1", sw
+    (deleted)
 
 6、设置默认拓扑 "hset dfl_topo_%02d %lu %lu", slot, sw, delay	"sadd dfl_set_%02d %lu", slot, sw
+    (revised)"hset dfl_topo_%02d %lu %lu", slot, sw, delay
 7、控制器确认链路连接之后，将该链路添加到真实拓扑中  "hset real_topo_%02d %lu %lu", slot, sw, delay	"sadd real_set_%02d %lu", slot, sw
+    (revised)"hset real_topo %lu %lu", sw, delay    "sadd real_set %lu", sw
 8、控制器确认链路断开连接之后，将该链路从真实拓扑中删除  "hdel real_topo_%02d %lu", slot, sw	"srem real_set_%02d %lu", slot, sw
+    (revised)"hdel real_topo %lu", sw   "srem real_set %lu", sw
 9、控制器确认链路断开连接之后，将该链路添加到失效链路列表中 "rpush fail_link_%02d_%02d %lu", db_id, slot, sw
-注意：何时清空失效链路列表？下一个时间片
+注意：何时清空失效链路列表？
+    (added)两个时间片之后清空失效链路列表 "del fail_link_%02d_%02d", db_id, (slot-2+SLOT_NUM)%SLOT_NUM
 
 10、控制器下发新增（非定时）流表后，把路由条目加入该链路的（非定时）路由集合中 "sadd rt_set_%02d_%02d %s%s", sw1, sw2, ip_src, ip_dst
+    (revised)"sadd rt_set_%02d_%02d %s%s%d", sw1, sw2, ip_src, ip_dst, num
 11、控制器下发新增（定时）流表后，把路由条目加入该链路的（定时）路由集合中 "sadd rt_set_t_%02d_%02d_%02d %s%s", sw1, sw2, slot, ip_src, ip_dst
+    (deleted)
 12、链路失效，控制器下发删除该链路的全部流表后，从链路的（定时+非定时）路由集合中删去相应路由条目 
 "srem rt_set_%02d_%02d %s%s", sw1, sw2, ip_src, ip_dst	"srem rt_set_t_%02d_%02d_%02d %s%s", sw1, sw2, slot, ip_src, ip_dst
+    (revised)"srem rt_set_%02d_%02d %s%s%d", sw1, sw2, ip_src, ip_dst, num
 13、控制器下发设置流表定时后，把路由条目该链路的从（非定时）路由集合中取出，加入（定时）路由集合中
 "smove rt_set_%02d_%02d rt_set_t_%02d_%02d_%02d %s%s", sw1, sw2, sw1, sw2, slot, ip_src, ip_dst
+    (deleted)
 
 14、设置默认路由列表 "rpush dflrt_%s%s_%02d %s", ip_src, ip_dst, slot, out_sw_port
+    (revised)"rpush dflrt_%s%s_%02d_%d %s",  ip_src, ip_dst, slot_no, num, out_sw_port
 15、设置控制器计算出的路由列表 "rpush calrt_%s%s %s", ip_src, ip_dst, out_sw_port
+    (revised)"rpush calrt_%s%s_%d %s", ip_src, ip_dst, num, out_sw_port
 16、设置控制器未成功计算出的路由列表，goto table2走默认路由 "rpush failrt_%s%s 1", ip_src, ip_dst
+    (deleted)
 
 17、设置下个时间片要删除的链路集合 "sadd del_link_%02d %lu", slot, sw
 18、拓扑收敛之后，校对得到失效链路，添加到失效链路列表中 
 "sdiff dfl_set_%02d real_set_%02d", slot, slot	"rpush fail_link_%02d_%02d %lu", db_id, slot, sw
+    (deleted)
 
 19、数据库向控制器通告流表增删操作失败，认为该控制器和本地数据库断开连接，将该通告内容写入该控制器对应的wait_exec集合中
 "sadd wait_exec_%02d %s", ctrl, buf
+    (revised)修改为list数据结构 "rpush wait_exec_%02d %s", ctrl, buf
 20、控制器连接到新的数据库，控制器读取wait_exec列表内容或者数据库通过订阅监听并成功下发通告之后，删除相应的wait_exec元素
 "srem wait_exec_%02d %s", ctrl, buf
 注意：采用set数据结构，可能存在通告处理失序问题（可以修改为list数据结构，不必判断是否存在重复写入）
-    
+    (revised)修改为list数据结构 "lpop wait_exec_%02d", ctrl
+
 ***************************************************************/
 
 #include "hiredis.h"
@@ -129,7 +148,7 @@ RET_RESULT Lookup_Del_Link(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip)
 // read link delay
 uint64_t Get_Link_Delay(uint32_t port1, uint32_t port2, int slot, char* redis_ip);
 // read wait_exec
-RET_RESULT Get_Wait_Exec(uint32_t ctrl, char *buf, char* redis_ip);
+// RET_RESULT Get_Wait_Exec(uint32_t ctrl, char *buf, char* redis_ip);
 
 /*执行命令*/
 RET_RESULT redis_connect(redisContext **context, char* redis_ip);

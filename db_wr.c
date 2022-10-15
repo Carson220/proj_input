@@ -1145,44 +1145,44 @@ uint64_t Get_Link_Delay(uint32_t sw1, uint32_t sw2, int slot, char* redis_ip)
     return ret;
 }
 
-RET_RESULT Get_Wait_Exec(uint32_t ctrl, char *buf, char* redis_ip)
-{
-    char cmd[CMD_MAX_LENGHT] = {0};
-    redisContext *context=NULL;
-    redisReply *reply=NULL;
-    int i = 0;
+// RET_RESULT Get_Wait_Exec(uint32_t ctrl, char *buf, char* redis_ip)
+// {
+//     char cmd[CMD_MAX_LENGHT] = {0};
+//     redisContext *context=NULL;
+//     redisReply *reply=NULL;
+//     int i = 0;
 
-    /*组装Redis命令*/
-    snprintf(cmd, CMD_MAX_LENGHT, "smembers wait_exec_%02d", ctrl);
+//     /*组装Redis命令*/
+//     snprintf(cmd, CMD_MAX_LENGHT, "smembers wait_exec_%02d", ctrl);
 
-    /*连接redis*/
-    redis_connect(&context, redis_ip);
+//     /*连接redis*/
+//     redis_connect(&context, redis_ip);
 
-    /*执行redis命令*/
-    reply = (redisReply *)redisCommand(context, cmd);
-    if (NULL == reply)
-    {
-        printf("\t%d execute command:%s failure\n", __LINE__, cmd);
-        redisFree(context);
-        return FAILURE;
-    }
+//     /*执行redis命令*/
+//     reply = (redisReply *)redisCommand(context, cmd);
+//     if (NULL == reply)
+//     {
+//         printf("\t%d execute command:%s failure\n", __LINE__, cmd);
+//         redisFree(context);
+//         return FAILURE;
+//     }
 
-    //输出查询结果
-    // printf("%d,%lu\n",reply->type,reply->elements);
-    // printf("element num = %lu\n",reply->elements);
-    for(i = 0; i < reply->elements; i++)
-    {
-        buf = reply->element[i]->str;
-        // 根据buf进行数据处理，流表下发
+//     //输出查询结果
+//     // printf("%d,%lu\n",reply->type,reply->elements);
+//     // printf("element num = %lu\n",reply->elements);
+//     for(i = 0; i < reply->elements; i++)
+//     {
+//         buf = reply->element[i]->str;
+//         // 根据buf进行数据处理，流表下发
         
-        // 流表成功下发后，从集合中删除相应元素
-        Del_Wait_Exec(ctrl, buf, redis_ip);
-    }
+//         // 流表成功下发后，从集合中删除相应元素
+//         Del_Wait_Exec(ctrl, buf, redis_ip);
+//     }
 
-    freeReplyObject(reply);
-    redisFree(context);
-    return SUCCESS;
-}
+//     freeReplyObject(reply);
+//     redisFree(context);
+//     return SUCCESS;
+// }
 
 /**********************************************************************************************************************/
 

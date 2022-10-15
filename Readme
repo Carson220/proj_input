@@ -6,3 +6,21 @@
 
 3. monitor_new有一个输入参数 para1表示Redis数据库IP
 数据库代理，用于订阅监听本地数据库的数据变化
+
+Redis 数据读写接口函数:
+
+    1、设置控制器当前连接的数据库 "hset ctrl_conn_db %u %u", slot, ctrl, db
+    2、设置默认拓扑 "hset dfl_topo_%02d %lu %lu", slot, sw, delay
+    3、控制器确认链路连接之后，将该链路添加到真实拓扑中  "hset real_topo %lu %lu", sw, delay    "sadd real_set %lu", sw
+    4、控制器确认链路断开连接之后，将该链路从真实拓扑中删除  "hdel real_topo %lu", sw   "srem real_set %lu", sw
+    5、控制器确认链路断开连接之后，将该链路添加到失效链路列表中 "rpush fail_link_%02d_%02d %lu", db_id, slot, sw
+        注意：何时清空失效链路列表？
+        两个时间片之后清空失效链路列表 "del fail_link_%02d_%02d", db_id, (slot-2+SLOT_NUM)%SLOT_NUM
+    6、控制器下发新增（非定时）流表后，把路由条目加入该链路的（非定时）路由集合中 "sadd rt_set_%02d_%02d %s%s%d", sw1, sw2, ip_src, ip_dst, num
+    7、链路失效，控制器下发删除该链路的全部流表后，从链路的（非定时）路由集合中删去相应路由条目 "srem rt_set_%02d_%02d %s%s%d", sw1, sw2, ip_src, ip_dst, num
+    8、设置默认路由列表 "rpush dflrt_%s%s_%02d_%d %s",  ip_src, ip_dst, slot_no, num, out_sw_port
+    9、设置新计算出的路由列表 "rpush calrt_%s%s_%d %s", ip_src, ip_dst, num, out_sw_port
+    10、设置下个时间片要删除的链路集合 "sadd del_link_%02d %lu", slot, sw
+    11、数据库向控制器通告流表增删操作失败，认为该控制器和本地数据库断开连接，将该通告内容写入该控制器对应的wait_exec列表中 "rpush wait_exec_%02d %s", ctrl, buf
+    12、控制器连接到新的数据库，控制器读取wait_exec列表内容或者数据库通过订阅监听并成功下发通告之后，删除相应的wait_exec元素 "lpop wait_exec_%02d", ctrl
+    
